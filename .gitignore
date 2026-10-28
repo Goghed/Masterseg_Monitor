@@ -5,5 +5,8 @@ __pycache__/
 .env
 agente/agente.ini
 venv/
-agente/nssm.exe
-agente/logs/
+.build-venv/
+build/
+dist/
+*.spec
+masterseg-agente.exe

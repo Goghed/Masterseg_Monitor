@@ -22,7 +22,6 @@ class HikvisionISAPI(Driver):
         # Câmeras não têm canais IP nem HD: evita 2 requisições inúteis por coleta.
         "DS-2CD": {"canais": False, "hdd": False},
         "DS-2DE": {"canais": False, "hdd": False},
-        "DS-2SE": {"canais": False, "hdd": False},  # speed dome
         # Switches gerenciáveis: só identificação e status.
         "DS-3E": {"canais": False, "hdd": False},
         # NVRs e DVRs: tudo.

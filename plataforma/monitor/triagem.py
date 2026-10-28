@@ -47,8 +47,44 @@ INFRA = {"gateway", "servidor", "gravador", "switch"}
 
 
 def agendar_triagem(evento_id):
-    t = threading.Thread(target=_executar, args=(evento_id,), daemon=True)
-    t.start()
+    """Dispara a triagem de um evento novo.
+
+    MODO "thread" (padrão, servidor próprio): regras + IA numa thread, sem
+    atrasar a resposta ao agente.
+    MODO "painel" (PythonAnywhere e outros que não executam threads): as regras
+    rodam na hora; a revisão da IA fica marcada como pendente e é feita aos
+    poucos pelo painel aberto (api_dashboard / api_cliente) ou pelo comando
+    `processar_triagem`.
+    """
+    if settings.TRIAGEM["MODO"] == "thread":
+        threading.Thread(target=_executar, args=(evento_id,), daemon=True).start()
+        return
+    try:
+        evento = Evento.objects.select_related("cliente", "equipamento").get(pk=evento_id)
+        analisar(evento, usar_ia=False)
+    except Exception:  # noqa: BLE001
+        log.exception("Falha na triagem do evento %s", evento_id)
+
+
+def processar_pendentes_ia(limite=1):
+    """Revisa com a IA os eventos que as regras já analisaram. Chamado a cada
+    atualização do painel (modo "painel") e pelo comando processar_triagem."""
+    if not settings.TRIAGEM["ANTHROPIC_API_KEY"]:
+        return 0
+    feitos = 0
+    for evento in (Evento.objects.select_related("cliente", "equipamento")
+                   .filter(aguarda_ia=True).order_by("criado_em")[:limite]):
+        # Marca antes de chamar: duas abas abertas não analisam o mesmo evento.
+        if not Evento.objects.filter(pk=evento.pk, aguarda_ia=True).update(aguarda_ia=False):
+            continue
+        if evento.resolvido_em:
+            continue  # já resolveu sozinho; a decisão das regras fica registrada
+        try:
+            analisar(evento)
+            feitos += 1
+        except Exception:  # noqa: BLE001
+            log.exception("Falha na revisão da IA do evento %s", evento.pk)
+    return feitos
 
 
 def _executar(evento_id):
@@ -62,9 +98,11 @@ def _executar(evento_id):
         close_old_connections()
 
 
-def analisar(evento: Evento):
+def analisar(evento: Evento, usar_ia=True):
     decisao = _regras_deterministicas(evento)
-    if decisao is None and settings.TRIAGEM["ANTHROPIC_API_KEY"]:
+    deterministica = decisao is not None
+    tem_ia = bool(settings.TRIAGEM["ANTHROPIC_API_KEY"])
+    if decisao is None and tem_ia and usar_ia:
         decisao = _perguntar_ia(evento)
     if decisao is None:
         dec, prio, just = PADRAO_POR_TIPO.get(evento.tipo, (D.AGUARDAR, 4, "Sem regra específica; acompanhar."))
@@ -91,11 +129,13 @@ def analisar(evento: Evento):
     evento.justificativa = just[:2000]
     evento.analisado_por = por
     evento.analisado_em = timezone.now()
+    # Só as regras rodaram, mas a IA está configurada: fica pendente de revisão.
+    evento.aguarda_ia = (not usar_ia) and tem_ia and not deterministica
     evento.save(update_fields=["decisao", "prioridade", "justificativa",
-                               "analisado_por", "analisado_em"])
+                               "analisado_por", "analisado_em", "aguarda_ia"])
 
-    if (dec == D.CHAMAR_TECNICO and settings.TRIAGEM["ACIONAMENTO_AUTOMATICO"]
-            and not evento.tecnico_acionado_em):
+    # Com revisão da IA pendente, o acionamento espera a decisão final dela.
+    if dec == D.CHAMAR_TECNICO and settings.TRIAGEM["ACIONAMENTO_AUTOMATICO"] and not evento.aguarda_ia:
         acionar_tecnico(evento)
     return evento
 
@@ -121,14 +161,6 @@ def _regras_deterministicas(evento):
         ).exclude(pk=evento.pk).exists()
         if geral:
             return (D.AGUARDAR, 5, "Faz parte da queda geral já registrada no local.", "regra")
-    if eq and evento.tipo in Evento.FALHAS_EQUIPAMENTO \
-            and evento.ocorrencias >= settings.MONITOR["INTERMITENTE_FALHAS"]:
-        desde = timezone.localtime(evento.criado_em).strftime("%d/%m às %H:%M")
-        prio = 1 if evento.cliente.portaria_remota or eq.critico else 2
-        return (D.CHAMAR_TECNICO, prio,
-                f"{eq.nome} falhou {evento.ocorrencias} vezes desde {desde}, voltando sozinho entre as "
-                "quedas. Oscilação assim não se resolve remotamente: costuma ser cabo ou conector, "
-                "fonte ou PoE fraco, ou porta do switch. Precisa de técnico no local.", "regra")
     return None
 
 
@@ -150,9 +182,7 @@ def _contexto(evento):
         "cliente": {"nome": cli.nome, "portaria_remota": cli.portaria_remota,
                     "observacoes": cli.observacoes[:500]},
         "evento": {"tipo": evento.tipo, "titulo": evento.titulo, "detalhe": evento.detalhe,
-                   "severidade": evento.severidade, "origem": evento.origem,
-                   "aberto_desde": evento.criado_em.isoformat(),
-                   "falhas_neste_incidente": evento.ocorrencias},
+                   "severidade": evento.severidade, "origem": evento.origem},
         "equipamentos_do_cliente_por_status": resumo,
         "historico_7_dias": historico,
         "reincidencias_24h": _reincidencias(evento),
@@ -182,8 +212,7 @@ Decisões possíveis:
 - nenhuma: não exige ação.
 
 Prioridade de 1 (urgente) a 5 (baixa). Portaria remota sem gateway, servidor ou gravador \
-é sempre urgente. Um incidente agrupa as quedas repetidas do mesmo equipamento: \
-"falhas_neste_incidente" acima de 1 indica que ele cai e volta sozinho (intermitente). Queda de um link com o reserva assumindo não exige técnico, exige \
+é sempre urgente. Queda de um link com o reserva assumindo não exige técnico, exige \
 chamado na operadora; queda sem reserva em portaria remota é urgente. Câmera isolada caindo uma vez costuma ser aguardar. Reincidência \
 indica instabilidade e justifica técnico. Seja conservador: deslocar técnico custa caro.
 
@@ -225,6 +254,8 @@ def _perguntar_ia(evento):
 
 
 def acionar_tecnico(evento):
+    if evento.tecnico_acionado_em:
+        return  # nunca aciona duas vezes o mesmo evento
     url = settings.TRIAGEM["WEBHOOK_ACIONAMENTO"]
     if not url:
         log.info("Acionamento automático ligado, mas sem webhook configurado")

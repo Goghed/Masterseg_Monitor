@@ -17,7 +17,6 @@ import os
 import platform
 import signal
 import socket
-import subprocess
 import sys
 import threading
 import time
@@ -27,10 +26,10 @@ import requests
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from drivers import DRIVERS, escolher_driver  # noqa: E402
-from drivers.base import ErroDriver, SenhaRecusada  # noqa: E402
+from drivers.base import ErroDriver  # noqa: E402
 from verificacoes import alcancavel  # noqa: E402
 
-VERSAO = "1.0.3"
+VERSAO = "1.0.0"
 log = logging.getLogger("agente")
 
 
@@ -42,9 +41,6 @@ class Agente:
         self.threads = cfg.getint("agente", "threads", fallback=16)
         self.coleta_lenta_s = cfg.getint("agente", "coleta_detalhes_segundos", fallback=300)
         self.recarregar_config_s = cfg.getint("agente", "recarregar_config_segundos", fallback=300)
-        # Depois de uma senha recusada, espera isto antes de tentar a MESMA senha de novo.
-        # Câmeras Intelbras/Dahua/Hikvision bloqueiam o usuário após poucas tentativas erradas.
-        self.espera_senha_s = cfg.getint("agente", "espera_senha_recusada_segundos", fallback=1800)
 
         self.http = requests.Session()
         self.http.headers.update({
@@ -58,13 +54,10 @@ class Agente:
         self.modo_unico = False
         self.equipamentos = []
         self.config_em = 0
-        # Controle remoto (comandos chegam na resposta do relatório).
-        self.pausado = False
-        self.reiniciar_pedido = False
-        self.iniciado_em = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         # Estado por equipamento: debounce, driver escolhido e última coleta lenta.
         self.estado = {}
         self.parar = threading.Event()
+        self.ultimo_envio_ok = False
 
     # ------------------------------------------------------------ plataforma
     def carregar_config(self):
@@ -73,18 +66,14 @@ class Agente:
             raise SystemExit("Token recusado pela plataforma. Confira o agente.ini.")
         r.raise_for_status()
         dados = r.json()
-        # Pausa sobrevive a um reinício: a plataforma lembra o último estado informado.
-        self.pausado = bool(dados["agente"].get("pausado", self.pausado))
         self.intervalo = max(10, dados["agente"]["intervalo_segundos"])
         self.falhas_para_offline = 1 if self.modo_unico else max(1, dados["agente"]["falhas_para_offline"])
         novos = {e["id"]: e for e in dados["equipamentos"]}
-        # Se IP, credencial ou driver mudou, refaz a detecção do driver e coleta já no
-        # próximo ciclo (inclusive se estava esperando por causa de senha recusada).
+        # Se IP, credencial ou driver mudou, refaz a detecção do driver.
         for eid, eq in novos.items():
             antigo = next((e for e in self.equipamentos if e["id"] == eid), None)
             if antigo and antigo != eq and eid in self.estado:
                 self.estado[eid].pop("driver", None)
-                self.estado[eid]["coleta_em"] = 0
         self.equipamentos = list(novos.values())
         self.config_em = time.monotonic()
         log.info("Configuração carregada: %s, %d equipamentos, intervalo %ss",
@@ -94,7 +83,6 @@ class Agente:
         payload = {
             "hostname": socket.gethostname(), "versao": VERSAO, "ip_local": ip_local(),
             "sistema": f"{platform.system()} {platform.release()}", "resultados": resultados,
-            "pausado": self.pausado, "iniciado_em": self.iniciado_em,
         }
         r = self.http.post(f"{self.url}/api/agente/relatorio/", json=payload, timeout=20)
         r.raise_for_status()
@@ -164,16 +152,6 @@ class Agente:
                 if dados.get("detalhes") is not None:
                     resultado["detalhes"] = {**resultado.get("detalhes", {}), **dados["detalhes"],
                                              "portas_testadas": teste["portas"]}
-            except SenhaRecusada as exc:
-                # Adia a próxima tentativa para não manter o usuário bloqueado no equipamento.
-                st["coleta_em"] = time.monotonic() + self.espera_senha_s - self.coleta_lenta_s
-                minutos = self.espera_senha_s // 60
-                log.warning("%s (%s): %s; nova tentativa em %d min ou quando a senha mudar na plataforma",
-                            eq["nome"], eq["ip"], exc, minutos)
-                resultado["detalhes"] = {**resultado.get("detalhes", {}),
-                                         "erro_coleta": f"{exc}. Nova tentativa em {minutos} min ou ao alterar "
-                                                        "a senha no cadastro",
-                                         "portas_testadas": teste["portas"]}
             except ErroDriver as exc:
                 log.warning("%s (%s): coleta falhou: %s", eq["nome"], eq["ip"], exc)
                 resultado["detalhes"] = {**resultado.get("detalhes", {}), "erro_coleta": str(exc),
@@ -183,49 +161,28 @@ class Agente:
         return resultado
 
     def ciclo(self):
+        # Sem equipamentos, recarrega a cada ciclo: assim o cadastro novo é pego em segundos.
         if not self.equipamentos or time.monotonic() - self.config_em > self.recarregar_config_s:
             try:
                 self.carregar_config()
             except requests.RequestException as exc:
                 log.warning("Não consegui baixar a configuração (%s); usando a anterior", exc)
-        # Pausado ou sem equipamentos, o relatório vai vazio: serve de sinal de vida
-        # e é por ele que chegam os comandos (inclusive o "retomar").
         resultados = []
-        if self.equipamentos and not self.pausado:
+        if self.equipamentos:
             with ThreadPoolExecutor(max_workers=self.threads) as pool:
                 resultados = [r for r in pool.map(self._checar_seguro, self.equipamentos) if r]
+        # Mesmo sem equipamentos, o relatório vai: ele é o sinal de vida do agente.
         try:
             resp = self.enviar(resultados)
-            if self.pausado:
-                log.info("Pausado pela plataforma: nenhum equipamento testado")
-            else:
-                on = sum(1 for r in resultados if r["online"])
-                log.info("Relatório enviado: %d/%d online (%s processados)",
-                         on, len(resultados), resp.get("processados"))
-            if not self.modo_unico:
-                self.executar_comando(resp.get("comando"))
+            self.ultimo_envio_ok = True
+            on = sum(1 for r in resultados if r["online"])
+            log.info("Relatório enviado: %d/%d online (%s processados)",
+                     on, len(resultados), resp.get("processados"))
         except requests.RequestException as exc:
             # Status é estado, não histórico: no próximo ciclo vai o estado atual.
+            self.ultimo_envio_ok = False
             log.warning("Falha ao enviar relatório (%s); tento de novo no próximo ciclo", exc)
         return resultados
-
-    def executar_comando(self, comando):
-        if not comando:
-            return
-        log.warning("Comando recebido da plataforma: %s", comando)
-        if comando == "pausar":
-            self.pausado = True
-        elif comando == "retomar":
-            self.pausado = False
-        elif comando == "recarregar":
-            self.config_em = float("-inf")  # recarrega no próximo ciclo
-            for st in self.estado.values():
-                st["coleta_em"] = 0  # e lê os detalhes de novo
-        elif comando == "reiniciar":
-            self.reiniciar_pedido = True
-            self.parar.set()
-        else:
-            log.warning("Comando desconhecido ignorado: %s", comando)
 
     def _checar_seguro(self, eq):
         try:
@@ -273,9 +230,18 @@ def testar_equipamento(args):
             print(f"{etapa} falhou: {exc}")
 
 
+def pasta_do_agente():
+    """Pasta onde estão o agente.ini e o log. No .exe (PyInstaller) é a pasta do
+    executável, e não a pasta temporária onde ele se descompacta."""
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+
 def main():
     p = argparse.ArgumentParser(description="MasterSeg Agente")
-    p.add_argument("--config", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "agente.ini"))
+    p.add_argument("--config", default=os.path.join(pasta_do_agente(), "agente.ini"))
+    p.add_argument("--log", metavar="ARQUIVO", help="grava o log também neste arquivo (rotativo, 5 MB x 3)")
     p.add_argument("--uma-vez", action="store_true", help="executa um ciclo e sai")
     p.add_argument("--testar", metavar="IP", help="testa um equipamento sem a plataforma")
     p.add_argument("--driver", default="auto", choices=["auto", *DRIVERS])
@@ -287,8 +253,14 @@ def main():
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args()
 
+    saidas = []
+    if sys.stdout is not None:  # no pythonw / .exe sem console não há stdout
+        saidas.append(logging.StreamHandler())
+    if args.log:
+        from logging.handlers import RotatingFileHandler
+        saidas.append(RotatingFileHandler(args.log, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"))
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
-                        format="%(asctime)s %(levelname)s %(message)s")
+                        format="%(asctime)s %(levelname)s %(message)s", handlers=saidas or None)
     logging.getLogger("urllib3").setLevel(logging.WARNING)
 
     if args.testar:
@@ -296,7 +268,7 @@ def main():
 
     cfg = configparser.ConfigParser()
     cfg.BOOLEAN_STATES = {**cfg.BOOLEAN_STATES, "sim": True, "nao": False, "não": False}
-    # utf-8-sig: aceita o agente.ini salvo com BOM (Bloco de Notas, PowerShell).
+    # utf-8-sig: aceita o arquivo salvo pelo Bloco de Notas/PowerShell (com BOM)
     if not cfg.read(args.config, encoding="utf-8-sig"):
         raise SystemExit(f"Arquivo de configuração não encontrado: {args.config}")
     agente = Agente(cfg)
@@ -307,6 +279,13 @@ def main():
             nome = next(e["nome"] for e in agente.equipamentos if e["id"] == r["id"])
             situacao = "ONLINE " if r["online"] else "OFFLINE"
             print(f"{situacao} {nome:<32} {r.get('latencia_ms') or '':>8} ms  {r.get('modelo', '')}")
+        if not agente.ultimo_envio_ok:
+            print("Os testes rodaram, mas o relatório não chegou na plataforma.")
+            sys.exit(1)
+        print("Relatório entregue na plataforma.")
+        if not agente.equipamentos:
+            print("Atenção: este cliente ainda não tem equipamentos cadastrados. "
+                  "Cadastre na plataforma e o agente começa a testar sozinho.")
         return
 
     signal.signal(signal.SIGTERM, lambda *_: agente.parar.set())
@@ -314,22 +293,6 @@ def main():
         agente.rodar()
     except KeyboardInterrupt:
         agente.parar.set()
-    if agente.reiniciar_pedido:
-        reiniciar_processo()
-
-
-def reiniciar_processo():
-    """Reinício pedido pela plataforma. Com supervisor (systemd, NSSM), basta sair
-    com erro que ele sobe de novo; rodando à mão, o agente se relança sozinho."""
-    if os.environ.get("MASTERSEG_SUPERVISOR"):
-        log.info("Saindo para o supervisor reiniciar o agente")
-        sys.exit(75)
-    log.info("Reiniciando o agente")
-    if os.name == "nt":
-        # os.execv no Windows não protege caminhos com espaço; o Popen sim.
-        subprocess.Popen([sys.executable, *sys.argv])
-        sys.exit(0)
-    os.execv(sys.executable, [sys.executable, *sys.argv])
 
 
 if __name__ == "__main__":

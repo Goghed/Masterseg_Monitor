@@ -1,0 +1,36 @@
+MASTERSEG AGENTE - INSTALACAO NO WINDOWS
+=======================================
+
+Nao precisa de VSCode nem de nada aberto. O agente roda como tarefa agendada
+do Windows: sobe junto com o computador, sem janela, e volta sozinho se parar.
+
+ANTES (uma vez so, no seu PC)
+-----------------------------
+Opcional, mas recomendado: gere o executavel, para o cliente nao precisar de Python.
+  1. De duplo clique em gerar_exe.bat (precisa do Python no SEU PC).
+  2. Vai aparecer o arquivo masterseg-agente.exe nesta pasta.
+Sem o .exe o instalador tambem funciona: ele instala o Python sozinho no cliente.
+
+NO COMPUTADOR DO CLIENTE
+------------------------
+  1. Copie a pasta "agente" inteira (ou so a pasta "windows", se ja tiver o .exe).
+  2. Clique com o botao direito em instalar.bat > Executar como administrador.
+  3. Informe a URL da plataforma e o token do agente
+     (Cadastros > Agentes > abra o agente > bloco "Arquivo agente.ini").
+  4. O instalador roda um teste e mostra cada equipamento ONLINE/OFFLINE.
+     No final deve aparecer "Relatorio entregue na plataforma."
+
+Fica instalado em:  C:\MasterSeg\Agente
+Log:                C:\MasterSeg\Agente\agente.log
+Ver o log ao vivo (PowerShell):
+  Get-Content C:\MasterSeg\Agente\agente.log -Wait -Tail 30
+
+Para trocar URL ou token: rode o instalar.bat de novo (ele substitui a instalacao).
+Para remover: desinstalar.bat como administrador.
+
+TESTAR UM EQUIPAMENTO NA MAO
+----------------------------
+Abra o PowerShell como administrador:
+  cd C:\MasterSeg\Agente
+  .\masterseg-agente.exe --testar 192.168.1.20 --usuario admin --senha SENHA
+  (sem o .exe:  .\venv\Scripts\python.exe agente.py --testar ...)

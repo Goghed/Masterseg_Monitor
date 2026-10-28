@@ -2,16 +2,17 @@
 from collections import Counter, defaultdict
 from datetime import timedelta
 
-from django.contrib.auth.decorators import login_required, user_passes_test
+from django.conf import settings
+from django.contrib.auth.decorators import login_required
 from django.db.models import Count, Q
 from django.db.models.functions import TruncDate
 from django.http import Http404, JsonResponse
-from django.views.decorators.http import require_POST
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 
-from .models import GRAVIDADE_STATUS, Agente, Cliente, Equipamento, Evento, Metrica, MetricaLink, Status
+from .models import GRAVIDADE_STATUS, Cliente, Equipamento, Evento, Metrica, MetricaLink, Status
 from .servicos import verificar_agentes
+from .triagem import processar_pendentes_ia
 
 TIPOS_PROBLEMA = [t for t in Evento.Tipo.values if t not in Evento.TIPOS_RECUPERACAO]
 
@@ -34,11 +35,6 @@ def dashboard(request):
 
 
 @login_required
-def agentes(request):
-    return render(request, "monitor/agentes.html")
-
-
-@login_required
 def cliente(request, chave):
     obj = get_object_or_404(Cliente, chave__iexact=chave)
     return render(request, "monitor/cliente.html", {"cliente": obj})
@@ -50,74 +46,14 @@ def _evento_json(e):
         "id": e.pk, "tipo": e.tipo, "tipo_label": e.get_tipo_display(),
         "severidade": e.severidade, "titulo": e.titulo, "detalhe": e.detalhe,
         "criado_em": e.criado_em.isoformat(),
-        "ultima_ocorrencia": e.ultima_ocorrencia.isoformat(), "ocorrencias": e.ocorrencias,
         "resolvido": e.resolvido_em is not None,
         "problema": e.e_problema,
         "decisao": e.decisao, "decisao_label": e.get_decisao_display(),
         "prioridade": e.prioridade, "justificativa": e.justificativa,
-        "analisado_por": e.analisado_por,
+        "analisado_por": e.analisado_por, "aguarda_ia": e.aguarda_ia,
         "cliente": {"nome": e.cliente.nome, "chave": e.cliente.chave},
         "equipamento": e.equipamento.nome if e.equipamento_id else None,
     }
-
-
-# Primeira versão do agente que obedece a comandos da plataforma.
-VERSAO_CONTROLE = (1, 0, 3)
-
-
-def _versao(texto):
-    try:
-        return tuple(int(p) for p in (texto or "").split("."))
-    except ValueError:
-        return ()
-
-
-def _iso(dt):
-    return dt.isoformat() if dt else None
-
-
-def _agente_json(a):
-    return {
-        "id": a.pk, "nome": a.nome, "online": a.online, "hostname": a.hostname, "versao": a.versao,
-        "ip_local": a.ip_local, "ip_publico": a.ip_publico, "sistema": a.sistema,
-        "ultimo_contato": _iso(a.ultimo_contato), "iniciado_em": _iso(a.iniciado_em),
-        "intervalo_segundos": a.intervalo_segundos, "pausado": a.pausado,
-        "aceita_comandos": _versao(a.versao) >= VERSAO_CONTROLE,
-        "comando": a.comando, "comando_label": a.get_comando_display() if a.comando else "",
-        "comando_pedido_em": _iso(a.comando_pedido_em), "comando_pedido_por": a.comando_pedido_por,
-        "comando_entregue": a.comando_entregue,
-        "comando_entregue_label": a.get_comando_entregue_display() if a.comando_entregue else "",
-        "comando_entregue_em": _iso(a.comando_entregue_em),
-        "cliente": {"nome": a.cliente.nome, "chave": a.cliente.chave},
-    }
-
-
-def _equipamentos_por_cliente(**filtro):
-    """Resumo dos equipamentos de cada cliente. Uma conta só, usada na visão geral,
-    na página de agentes e na tela do cliente, para todas dizerem a mesma coisa."""
-    resumo = defaultdict(lambda: {"total": 0, "online": 0, "offline": 0, "degradado": 0,
-                                  "desconhecido": 0, "nomes_offline": [], "nomes_degradado": [],
-                                  "statuses": []})
-    for cid, st, nome in (Equipamento.objects.filter(ativo=True, cliente__ativo=True, **filtro)
-                          .order_by("ordem", "nome").values_list("cliente_id", "status", "nome")):
-        r = resumo[cid]
-        r["total"] += 1
-        r[st] = r.get(st, 0) + 1
-        r["statuses"].append(st)
-        if st == Status.OFFLINE:
-            r["nomes_offline"].append(nome)
-        elif st == Status.DEGRADADO:
-            r["nomes_degradado"].append(nome)
-    return resumo
-
-
-def _equip_json(r):
-    return {k: v for k, v in r.items() if k != "statuses"}
-
-
-def _urgencia(e):
-    """Ordena incidentes abertos: chamar técnico primeiro, depois a prioridade."""
-    return (e.decisao != Evento.Decisao.CHAMAR_TECNICO, e.prioridade or 9, -e.ultima_ocorrencia.timestamp())
 
 
 def _pior(statuses):
@@ -146,27 +82,26 @@ def api_busca(request):
 @login_required
 def api_dashboard(request):
     verificar_agentes()
+    if settings.TRIAGEM["MODO"] != "thread":
+        processar_pendentes_ia(limite=1)
     agora = timezone.now()
     inicio_30d = (timezone.localtime(agora) - timedelta(days=29)).replace(
         hour=0, minute=0, second=0, microsecond=0)
 
     # Mosaico: pior status de cada cliente.
-    equip = _equipamentos_por_cliente()
+    por_cliente = defaultdict(list)
+    for cid, st in Equipamento.objects.filter(ativo=True, cliente__ativo=True).values_list(
+            "cliente_id", "status"):
+        por_cliente[cid].append(st)
     links_fora = defaultdict(list)
     for cid, det in Equipamento.objects.filter(ativo=True, categoria="gateway").values_list("cliente_id", "detalhes"):
         for l in (det or {}).get("links") or []:
             if l.get("status") in ("offline", "sem_internet"):
                 links_fora[cid].append(l.get("nome") or l.get("interface"))
     clientes = list(Cliente.objects.filter(ativo=True).prefetch_related("agentes"))
-    problemas = Evento.objects.filter(tipo__in=TIPOS_PROBLEMA)
-    abertos = problemas.filter(resolvido_em__isnull=True)
-    tecnico = defaultdict(list)
-    for ev in sorted(abertos.filter(decisao=Evento.Decisao.CHAMAR_TECNICO), key=_urgencia):
-        tecnico[ev.cliente_id].append(ev.titulo)
     mosaico = []
     for c in clientes:
-        eq = equip[c.pk]
-        sts = eq["statuses"]
+        sts = por_cliente.get(c.pk, [])
         agentes = [a for a in c.agentes.all() if a.ativo]
         sem_agente = bool(agentes) and not any(a.online for a in agentes)
         status = Status.OFFLINE if sem_agente else _pior(sts)
@@ -175,15 +110,13 @@ def api_dashboard(request):
         mosaico.append({
             "chave": c.chave, "nome": c.nome,
             "status": status, "links_fora": links_fora.get(c.pk, []),
-            "offline": eq["offline"], "total": eq["total"], "equipamentos": _equip_json(eq),
+            "offline": sts.count(Status.OFFLINE), "total": len(sts),
             "agente_offline": sem_agente,
-            "agente": ("sem_contato" if sem_agente else "sem_agente" if not agentes
-                       else "pausado" if all(a.pausado for a in agentes if a.online) else "comunicando"),
-            "chamar_tecnico": tecnico.get(c.pk, []),
         })
-    mosaico.sort(key=lambda m: (not m["chamar_tecnico"], -GRAVIDADE_STATUS.get(m["status"], 0), m["nome"]))
+    mosaico.sort(key=lambda m: (-GRAVIDADE_STATUS.get(m["status"], 0), m["nome"]))
 
-    contagem = Counter(st for r in equip.values() for st in r["statuses"])
+    contagem = Counter(st for sts in por_cliente.values() for st in sts)
+    problemas = Evento.objects.filter(tipo__in=TIPOS_PROBLEMA)
 
     serie = (problemas.filter(criado_em__gte=inicio_30d)
              .annotate(dia=TruncDate("criado_em")).values("dia", "severidade")
@@ -200,6 +133,9 @@ def api_dashboard(request):
     top_clientes = (problemas.filter(criado_em__gte=inicio_30d)
                     .values("cliente__nome", "cliente__chave")
                     .annotate(n=Count("id")).order_by("-n")[:6])
+    abertos = problemas.filter(resolvido_em__isnull=True,
+                               tipo__in=[Evento.Tipo.EQUIP_OFFLINE, Evento.Tipo.AGENTE_OFFLINE,
+                                         Evento.Tipo.FALHA_GERAL, Evento.Tipo.HDD_ERRO])
     ultimos = Evento.objects.select_related("cliente", "equipamento")[:20]
 
     return JsonResponse({
@@ -233,6 +169,8 @@ def api_dashboard(request):
 
 @login_required
 def api_cliente(request, chave):
+    if settings.TRIAGEM["MODO"] != "thread":
+        processar_pendentes_ia(limite=1)
     try:
         cli = Cliente.objects.prefetch_related("agentes").get(chave__iexact=chave)
     except Cliente.DoesNotExist:
@@ -279,21 +217,6 @@ def api_cliente(request, chave):
         # Principal primeiro, depois pela distância da rota
         return sorted(saida, key=lambda l: (not l.get("principal"), l.get("distancia") or 99))
 
-    incidentes = {}
-    for ev in sorted(Evento.objects.filter(cliente=cli, equipamento__isnull=False, resolvido_em__isnull=True,
-                                           tipo__in=TIPOS_PROBLEMA), key=_urgencia):
-        incidentes.setdefault(ev.equipamento_id, ev)
-
-    def incidente_json(ev):
-        if not ev:
-            return None
-        return {"id": ev.pk, "titulo": ev.titulo, "detalhe": ev.detalhe,
-                "decisao": ev.decisao, "decisao_label": ev.get_decisao_display(),
-                "prioridade": ev.prioridade, "justificativa": ev.justificativa,
-                "analisado_por": ev.analisado_por, "ocorrencias": ev.ocorrencias,
-                "desde": ev.criado_em.isoformat(),
-                "chamar_tecnico": ev.decisao == Evento.Decisao.CHAMAR_TECNICO}
-
     def eq_json(e):
         d = disponib.get(e.pk)
         detalhes = dict(e.detalhes or {})
@@ -310,7 +233,6 @@ def api_cliente(request, chave):
             "firmware": e.firmware, "serial": e.serial, "mac": e.mac,
             "critico": e.critico, "depende_de": e.depende_de.nome if e.depende_de else None,
             "detalhes": detalhes,
-            "incidente": incidente_json(incidentes.get(e.pk)),
             "sparkline": linhas.get(e.pk, [])[-60:],
             "disponibilidade_24h": round(100 * d["on"] / d["total"], 1) if d and d["total"] else None,
         }
@@ -326,7 +248,11 @@ def api_cliente(request, chave):
             "online": sum(1 for i in itens if i["status"] == Status.ONLINE),
         })
 
-    agentes = [_agente_json(a) for a in cli.agentes.all() if a.ativo]
+    agentes = [{
+        "nome": a.nome, "online": a.online, "hostname": a.hostname, "versao": a.versao,
+        "ip_local": a.ip_local, "ip_publico": a.ip_publico,
+        "ultimo_contato": a.ultimo_contato.isoformat() if a.ultimo_contato else None,
+    } for a in cli.agentes.all() if a.ativo]
 
     eventos = Evento.objects.filter(cliente=cli).select_related("cliente", "equipamento")[:30]
     contagem = Counter(e.status for e in eqs)
@@ -342,36 +268,3 @@ def api_cliente(request, chave):
         "secoes": secoes,
         "eventos": [_evento_json(e) for e in eventos],
     })
-
-
-@login_required
-def api_agentes(request):
-    verificar_agentes()
-    lista = Agente.objects.filter(ativo=True, cliente__ativo=True).select_related("cliente")
-    equip = _equipamentos_por_cliente()
-    saida = []
-    for a in lista:
-        item = _agente_json(a)
-        item["equipamentos"] = _equip_json(equip[a.cliente_id])
-        saida.append(item)
-    # Sem contato primeiro: é o que precisa de atenção.
-    saida.sort(key=lambda a: (a["online"], not a["pausado"], a["cliente"]["nome"]))
-    return JsonResponse({"agora": timezone.now().isoformat(), "agentes": saida})
-
-
-@require_POST
-@user_passes_test(lambda u: u.is_active and u.is_staff)
-def api_agente_comando(request, pk):
-    agente = get_object_or_404(Agente, pk=pk, ativo=True)
-    comando = request.POST.get("comando", "")
-    if comando == "cancelar":
-        Agente.objects.filter(pk=pk).update(comando="")
-        return JsonResponse({"ok": True})
-    if comando not in Agente.Comando.values:
-        return JsonResponse({"erro": "Comando inválido"}, status=400)
-    if _versao(agente.versao) < VERSAO_CONTROLE:
-        return JsonResponse({"erro": f"O agente está na versão {agente.versao or '?'} e não recebe comandos. "
-                                     "Atualize para a 1.0.3 ou mais nova."}, status=409)
-    Agente.objects.filter(pk=pk).update(comando=comando, comando_pedido_em=timezone.now(),
-                                        comando_pedido_por=request.user.get_username())
-    return JsonResponse({"ok": True})

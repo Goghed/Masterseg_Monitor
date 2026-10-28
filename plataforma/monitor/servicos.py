@@ -1,12 +1,9 @@
 """Regras de negócio: processar relatórios do agente e gerar eventos."""
 import logging
-from datetime import timedelta
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import F, Q
 from django.utils import timezone
-from django.utils.dateparse import parse_datetime
 
 from .models import Agente, Equipamento, Evento, LinkWAN, Metrica, MetricaLink, Status
 
@@ -30,7 +27,6 @@ def _status_a_partir(resultado):
 
 def criar_evento(**campos):
     """Cria o evento e dispara a triagem depois do commit."""
-    campos.setdefault("ultima_ocorrencia", campos.get("criado_em") or timezone.now())
     evento = Evento.objects.create(**campos)
     if evento.e_problema:
         from .triagem import agendar_triagem
@@ -49,49 +45,6 @@ def _resolver_abertos(equipamento, tipos, quando):
     ).update(resolvido_em=quando)
 
 
-GRAVIDADE_SEVERIDADE = {Evento.Severidade.INFO: 0, Evento.Severidade.AVISO: 1, Evento.Severidade.CRITICO: 2}
-
-
-def incidente_recente(eq, agora):
-    """Incidente de falha do equipamento ainda aberto, ou fechado há pouco (dentro
-    da janela de reabertura). Aberto tem preferência."""
-    janela = timedelta(minutes=settings.MONITOR["JANELA_REABERTURA_MIN"])
-    return (Evento.objects.filter(equipamento=eq, tipo__in=Evento.FALHAS_EQUIPAMENTO)
-            .filter(Q(resolvido_em__isnull=True) | Q(resolvido_em__gte=agora - janela))
-            .order_by(F("resolvido_em").desc(nulls_first=True), "-criado_em").first())
-
-
-def _falha_equipamento(eq, tipo, severidade, titulo, detalhe, agora):
-    """Um equipamento que cai, volta e cai de novo (ou alterna entre offline e
-    serviço parado) é UM incidente: soma ocorrências em vez de abrir outro evento."""
-    inc = incidente_recente(eq, agora)
-    if not inc:
-        return criar_evento(cliente=eq.cliente, equipamento=eq, tipo=tipo, severidade=severidade,
-                            titulo=titulo, detalhe=detalhe, criado_em=agora)
-
-    ordem = Evento.FALHAS_EQUIPAMENTO
-    if ordem.index(tipo) <= ordem.index(inc.tipo):
-        inc.tipo = tipo  # o incidente assume a forma mais grave que já apareceu
-    if GRAVIDADE_SEVERIDADE[severidade] > GRAVIDADE_SEVERIDADE[inc.severidade]:
-        inc.severidade = severidade
-    inc.ocorrencias += 1
-    inc.ultima_ocorrencia = agora
-    inc.resolvido_em = None
-    desde = timezone.localtime(inc.criado_em).strftime("%d/%m %H:%M")
-    if inc.ocorrencias >= settings.MONITOR["INTERMITENTE_FALHAS"]:
-        inc.titulo = f"{eq.nome} intermitente: {inc.ocorrencias} falhas desde {desde}"
-    else:
-        inc.titulo = titulo
-    inc.detalhe = f"{detalhe} Última falha às {timezone.localtime(agora):%H:%M}; {inc.ocorrencias} falhas neste incidente."
-    inc.save(update_fields=["tipo", "severidade", "ocorrencias", "ultima_ocorrencia",
-                            "resolvido_em", "titulo", "detalhe"])
-    # Reanalisa só quando vira intermitente: a decisão muda, e a IA não é chamada a cada oscilação.
-    if inc.ocorrencias == settings.MONITOR["INTERMITENTE_FALHAS"]:
-        from .triagem import agendar_triagem
-        transaction.on_commit(lambda: agendar_triagem(inc.pk))
-    return inc
-
-
 def _transicao_status(eq, novo, agora, servico_ok=None):
     antigo = eq.status
     if novo == antigo:
@@ -101,38 +54,36 @@ def _transicao_status(eq, novo, agora, servico_ok=None):
     nome = eq.nome
 
     if novo == Status.OFFLINE:
-        _falha_equipamento(
-            eq, Evento.Tipo.EQUIP_OFFLINE,
+        criar_evento(
+            cliente=eq.cliente, equipamento=eq, tipo=Evento.Tipo.EQUIP_OFFLINE,
             severidade=Evento.Severidade.CRITICO if eq.critico or eq.categoria in (
                 "gateway", "servidor", "gravador", "switch") else Evento.Severidade.AVISO,
             titulo=f"{nome} parou de responder",
             detalhe=f"IP {eq.ip}. Status anterior: {Status(antigo).label.lower()}.",
-            agora=agora,
+            criado_em=agora,
         )
     elif novo == Status.DEGRADADO and servico_ok is False:
-        _falha_equipamento(
-            eq, Evento.Tipo.SERVICO_PARADO,
+        criar_evento(
+            cliente=eq.cliente, equipamento=eq, tipo=Evento.Tipo.SERVICO_PARADO,
             severidade=Evento.Severidade.AVISO,
             titulo=f"{nome} responde na rede, mas o serviço parou",
             detalhe=(f"IP {eq.ip} responde, porém a leitura falhou: {(eq.detalhes or {}).get('erro_coleta')}."
                      if (eq.detalhes or {}).get("erro_coleta")
                      else f"IP {eq.ip} responde, porém a porta {eq.porta_http} (web/API) não abre."),
-            agora=agora,
+            criado_em=agora,
         )
     elif novo == Status.DEGRADADO:
-        _falha_equipamento(
-            eq, Evento.Tipo.DEGRADADO,
+        criar_evento(
+            cliente=eq.cliente, equipamento=eq, tipo=Evento.Tipo.DEGRADADO,
             severidade=Evento.Severidade.AVISO,
             titulo=f"{nome} com conexão degradada",
             detalhe=f"Latência {eq.latencia_ms or 0:.0f} ms, perda {eq.perda_pct or 0:.0f}%.",
-            agora=agora,
+            criado_em=agora,
         )
     elif novo == Status.ONLINE and antigo in (Status.OFFLINE, Status.DEGRADADO):
-        inc = incidente_recente(eq, agora)
-        _resolver_abertos(eq, Evento.FALHAS_EQUIPAMENTO, agora)
-        # Num equipamento oscilando, o próprio incidente mostra "resolvido";
-        # um "voltou" a cada volta só enche o feed.
-        if antigo == Status.OFFLINE and (not inc or inc.ocorrencias == 1):
+        _resolver_abertos(eq, [Evento.Tipo.EQUIP_OFFLINE, Evento.Tipo.DEGRADADO,
+                                Evento.Tipo.SERVICO_PARADO], agora)
+        if antigo == Status.OFFLINE:
             criar_evento(
                 cliente=eq.cliente, equipamento=eq, tipo=Evento.Tipo.EQUIP_ONLINE,
                 severidade=Evento.Severidade.INFO,
@@ -350,14 +301,8 @@ def _registrar_contato(agente, dados, ip_origem, agora):
     agente.versao = (dados.get("versao") or agente.versao)[:20]
     agente.ip_local = dados.get("ip_local") or agente.ip_local
     agente.ip_publico = ip_origem or agente.ip_publico
-    agente.sistema = (dados.get("sistema") or agente.sistema)[:100]
-    if dados.get("iniciado_em"):
-        agente.iniciado_em = parse_datetime(dados["iniciado_em"]) or agente.iniciado_em
-    agente.pausado = bool(dados.get("pausado"))
     agente.marcado_offline = False
-    # Só os campos de contato: os de comando são escritos pela tela ao mesmo tempo.
-    agente.save(update_fields=["ultimo_contato", "hostname", "versao", "ip_local", "ip_publico",
-                               "sistema", "iniciado_em", "pausado", "marcado_offline"])
+    agente.save()
     if voltou:
         Evento.objects.filter(
             cliente=agente.cliente, tipo=Evento.Tipo.AGENTE_OFFLINE, resolvido_em__isnull=True,

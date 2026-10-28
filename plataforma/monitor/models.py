@@ -68,25 +68,6 @@ class Agente(models.Model):
     marcado_offline = models.BooleanField(default=False, editable=False)
     ativo = models.BooleanField(default=True)
 
-    # Informado pelo próprio agente a cada relatório.
-    sistema = models.CharField(max_length=100, blank=True)
-    iniciado_em = models.DateTimeField(null=True, blank=True)
-    pausado = models.BooleanField(default=False)
-
-    # Controle remoto: o comando fica pendente até o próximo relatório do agente,
-    # que o recebe na resposta (a conexão continua sendo só de dentro para fora).
-    class Comando(models.TextChoices):
-        REINICIAR = "reiniciar", "Reiniciar"
-        PAUSAR = "pausar", "Pausar"
-        RETOMAR = "retomar", "Retomar"
-        RECARREGAR = "recarregar", "Recarregar cadastro"
-
-    comando = models.CharField(max_length=20, choices=Comando.choices, blank=True)
-    comando_pedido_em = models.DateTimeField(null=True, blank=True)
-    comando_pedido_por = models.CharField(max_length=150, blank=True)
-    comando_entregue = models.CharField(max_length=20, choices=Comando.choices, blank=True)
-    comando_entregue_em = models.DateTimeField(null=True, blank=True)
-
     def __str__(self):
         return f"{self.nome} ({self.cliente.chave})"
 
@@ -283,9 +264,6 @@ class Evento(models.Model):
         NENHUMA = "nenhuma", "Sem ação"
 
     TIPOS_RECUPERACAO = {Tipo.EQUIP_ONLINE, Tipo.AGENTE_ONLINE, Tipo.LINK_ONLINE, Tipo.FAILOVER_RETORNO}
-    # Falhas do próprio equipamento, da mais grave para a mais leve. Viram um
-    # incidente só: oscilar entre elas não abre evento novo.
-    FALHAS_EQUIPAMENTO = (Tipo.EQUIP_OFFLINE, Tipo.SERVICO_PARADO, Tipo.DEGRADADO)
 
     cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, related_name="eventos")
     equipamento = models.ForeignKey(
@@ -302,20 +280,20 @@ class Evento(models.Model):
     )
     criado_em = models.DateTimeField(default=timezone.now, db_index=True)
     resolvido_em = models.DateTimeField(null=True, blank=True)
-    ocorrencias = models.PositiveIntegerField(
-        default=1, help_text="Quantas vezes o problema se repetiu dentro deste mesmo incidente.",
-    )
-    ultima_ocorrencia = models.DateTimeField(default=timezone.now, db_index=True)
 
     decisao = models.CharField(max_length=20, choices=Decisao.choices, default=Decisao.PENDENTE)
     prioridade = models.PositiveSmallIntegerField(null=True, blank=True, help_text="1 = mais urgente")
     justificativa = models.TextField(blank=True)
     analisado_por = models.CharField(max_length=20, blank=True)  # "regra" ou "ia"
     analisado_em = models.DateTimeField(null=True, blank=True)
+    aguarda_ia = models.BooleanField(
+        default=False, db_index=True,
+        help_text="As regras já decidiram; falta a revisão da IA (modo painel).",
+    )
     tecnico_acionado_em = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        ordering = ["-ultima_ocorrencia"]
+        ordering = ["-criado_em"]
         indexes = [
             models.Index(fields=["cliente", "-criado_em"]),
             models.Index(fields=["tipo", "criado_em"]),

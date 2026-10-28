@@ -17,10 +17,6 @@ class ErroDriver(Exception):
     pass
 
 
-class SenhaRecusada(ErroDriver):
-    """401: insistir com a mesma senha faz o equipamento bloquear o usuário."""
-
-
 class Driver:
     nome = "base"
     # Portas testadas no ciclo rápido, além das cadastradas.
@@ -48,7 +44,7 @@ class Driver:
         except requests.RequestException as exc:
             raise ErroDriver(f"sem resposta HTTP: {exc.__class__.__name__}") from exc
         if r.status_code == 401:
-            raise SenhaRecusada(motivo_401(r.text))
+            raise ErroDriver("usuário ou senha recusados (401)")
         if r.status_code >= 400:
             raise ErroDriver(f"HTTP {r.status_code} em {caminho}")
         return r
@@ -84,21 +80,6 @@ class Driver:
 
 
 # ---------------------------------------------------------------- utilidades
-def motivo_401(texto):
-    """A Hikvision diz no corpo do 401 se o usuário está bloqueado (e por quanto
-    tempo) ou quantas tentativas restam. Sem essas tags, mensagem genérica."""
-    texto = texto or ""
-    if re.search(r"<lockStatus>\s*lock\s*<", texto):
-        seg = re.search(r"<unlockTime>\s*(\d+)", texto)
-        resto = f", libera em {int(seg.group(1)) // 60 + 1} min" if seg else ""
-        return f"usuário bloqueado pelo equipamento por tentativas erradas{resto} (401)"
-    tentativas = re.search(r"<retryLoginTime>\s*(\d+)", texto)
-    if tentativas:
-        return (f"usuário ou senha recusados (401), restam {tentativas.group(1)} "
-                "tentativas antes do bloqueio")
-    return "usuário ou senha recusados (401)"
-
-
 def xml_raiz(texto):
     """Faz o parse ignorando namespaces (a ISAPI usa vários)."""
     raiz = ET.fromstring(texto)

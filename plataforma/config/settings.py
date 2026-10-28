@@ -8,6 +8,22 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
+def _carregar_env(caminho):
+    """Lê um arquivo .env simples (CHAVE=valor). Variáveis já definidas no
+    ambiente têm prioridade. Sem dependência externa."""
+    if not caminho.exists():
+        return
+    for linha in caminho.read_text(encoding="utf-8-sig").splitlines():
+        linha = linha.strip()
+        if not linha or linha.startswith("#") or "=" not in linha:
+            continue
+        chave, valor = linha.split("=", 1)
+        os.environ.setdefault(chave.strip(), valor.strip().strip('"').strip("'"))
+
+
+_carregar_env(BASE_DIR / ".env")
+
+
 def env(nome, padrao=None):
     return os.environ.get(nome, padrao)
 
@@ -124,16 +140,16 @@ MONITOR = {
     "AGENTE_TOLERANCIA_INTERVALOS": int(env("MONITOR_AGENTE_TOLERANCIA", "4")),
     # Dias de histórico de métricas mantidos.
     "RETENCAO_METRICAS_DIAS": int(env("MONITOR_RETENCAO_DIAS", "30")),
-    # Equipamento que cai de novo até X min depois de voltar reabre o mesmo incidente.
-    "JANELA_REABERTURA_MIN": int(env("MONITOR_JANELA_REABERTURA_MIN", "30")),
-    # A partir de quantas falhas no mesmo incidente ele é tratado como intermitente.
-    "INTERMITENTE_FALHAS": int(env("MONITOR_INTERMITENTE_FALHAS", "3")),
 }
 
 TRIAGEM = {
     # Sem chave, a triagem roda só com regras.
     "ANTHROPIC_API_KEY": env("ANTHROPIC_API_KEY", ""),
     "MODELO": env("TRIAGEM_MODELO", "claude-sonnet-5-5"),
+    # "thread": IA em segundo plano (servidor próprio).
+    # "painel": regras na hora e revisão da IA feita pelo painel aberto ou pelo
+    # comando processar_triagem (PythonAnywhere, que não executa threads).
+    "MODO": env("TRIAGEM_MODO", "thread"),
     # Modo sombra: a IA decide e registra, mas ninguém é acionado.
     "ACIONAMENTO_AUTOMATICO": env_bool("TRIAGEM_ACIONAMENTO_AUTOMATICO", False),
     # Webhook que recebe o chamado (n8n, WhatsApp API, script do VitalPBX...).

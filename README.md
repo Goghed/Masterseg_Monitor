@@ -64,9 +64,7 @@ python agente.py --testar 192.168.1.30 --usuario admin --senha SENHA --driver da
 
 Imprime tudo o que o driver leu (modelo, firmware, canais, HDs). Use isso para validar cada modelo que vocês instalam.
 
-**Windows:** instale o Python 3.11+ de python.org (marcando "Add python.exe to PATH"), preencha o `agente.ini` e dê dois cliques em `instalar_windows.cmd`. Ele pede permissão de administrador, baixa o [NSSM](https://nssm.cc/), instala as dependências, fecha um agente aberto à mão e cria o serviço **MasterSeg Agente**: inicia com o Windows, volta sozinho se cair e atende ao "Reiniciar" da plataforma. Log em `agente\logs\agente.log`. Rodar de novo atualiza o serviço; `instalar_windows.cmd -Remover` desinstala. Sem internet, coloque o `nssm.exe` (win64) na pasta antes.
-
-**Controle pela plataforma (agente 1.0.3+):** a página **Agentes** mostra se cada agente está comunicando, a máquina, a versão e há quanto tempo está rodando, com botões para **Recarregar cadastro**, **Pausar/Retomar testes** e **Reiniciar agente**. O comando vai na resposta do próximo relatório; nenhuma porta é aberta no cliente. Não existe "parar" remoto de propósito: um agente parado não teria como receber o "iniciar". Rodando à mão (sem supervisor), o "Reiniciar" relança o próprio processo.
+**Windows:** use a pasta `agente/windows` (veja o `LEIA-ME.txt` dela). Clique com o botão direito em `instalar.bat` > *Executar como administrador*, informe URL e token, e o agente fica instalado em `C:\MasterSeg\Agente` como tarefa agendada (sobe com o Windows, roda como SYSTEM, sem janela, volta sozinho se parar). Para o cliente não precisar de Python, gere antes o `masterseg-agente.exe` com o `gerar_exe.bat` no seu PC, ou pelo workflow `.github/workflows/agente-windows.yml` se o projeto estiver no GitHub.
 
 ## Como o agente decide
 
@@ -125,6 +123,9 @@ TRIAGEM_WEBHOOK=https://seu-n8n/webhook/chamado     # recebe JSON com cliente, e
 O webhook é o ponto para WhatsApp, Telegram ou uma originate no VitalPBX via AMI.
 
 ## Produção
+
+**PythonAnywhere:** siga `plataforma/deploy/PYTHONANYWHERE.md` (script de instalação, WSGI e importação dos dados prontos).
+
 
 - Variáveis em `plataforma/.env.exemplo`. Use PostgreSQL (`DB_ENGINE=postgresql`), `DJANGO_DEBUG=0` e um `DJANGO_SECRET_KEY` novo. Defina `MONITOR_CHAVE_CRIPTO` (gere com `python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())"`) para as senhas não dependerem do SECRET_KEY.
 - `gunicorn config.wsgi -w 4 -b 127.0.0.1:8000` atrás do Nginx com HTTPS (Let's Encrypt). `python manage.py collectstatic`.
