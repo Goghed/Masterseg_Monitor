@@ -1,0 +1,15 @@
+{% extends "monitor/base.html" %}
+{% block titulo %}Agentes{% endblock %}
+{% block pagina %}agentes{% endblock %}
+{% block body_attrs %}data-staff="{{ user.is_staff|yesno:'1,' }}"{% endblock %}
+{% block conteudo %}
+<section class="bloco" aria-labelledby="t-agentes">
+  <div class="bloco-cab">
+    <h1 id="t-agentes" class="titulo-tela">Agentes</h1>
+    <p class="bloco-resumo" id="agentes-resumo"></p>
+  </div>
+  <p class="ag-nota">Os comandos chegam ao agente no próximo contato dele com a plataforma (em até um intervalo de checagem).
+    Pausado, o agente não acessa nenhum equipamento, mas continua se comunicando e obedece ao “Retomar”.</p>
+  <div class="ag-lista" id="agentes" aria-live="polite"></div>
+</section>
+{% endblock %}

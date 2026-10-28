@@ -1,0 +1,9 @@
+db.sqlite3
+staticfiles/
+__pycache__/
+*.pyc
+.env
+agente/agente.ini
+venv/
+agente/nssm.exe
+agente/logs/

@@ -1,0 +1,22 @@
+[Unit]
+Description=MasterSeg Agente de monitoramento
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=masterseg
+WorkingDirectory=/opt/masterseg-agente
+ExecStart=/opt/masterseg-agente/venv/bin/python /opt/masterseg-agente/agente.py
+Restart=always
+# O agente sai com código 75 quando a plataforma pede reinício; o systemd sobe de novo.
+Environment=MASTERSEG_SUPERVISOR=1
+RestartSec=10
+# Watchdog do systemd: se o processo morrer, volta em 10s.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/masterseg-agente
+
+[Install]
+WantedBy=multi-user.target

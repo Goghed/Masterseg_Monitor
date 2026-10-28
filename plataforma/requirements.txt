@@ -1,0 +1,6 @@
+django>=5.1,<6
+cryptography>=42
+requests>=2.31
+# produção
+gunicorn>=22
+psycopg[binary]>=3.1

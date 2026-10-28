@@ -1,0 +1,33 @@
+{% extends "monitor/base.html" %}
+{% block titulo %}{{ cliente.nome }}{% endblock %}
+{% block pagina %}cliente{% endblock %}
+{% block body_attrs %}data-chave="{{ cliente.chave }}"{% endblock %}
+{% block conteudo %}
+<a class="voltar" href="{% url 'dashboard' %}">Visão geral</a>
+
+<header class="cli-cab">
+  <div class="cli-id">
+    <p class="cli-chave">{{ cliente.chave }}</p>
+    <h1 class="cli-nome">{{ cliente.nome }}</h1>
+    <p class="cli-meta" id="cli-meta">
+      {% if cliente.cidade %}<span>{{ cliente.cidade }}</span>{% endif %}
+      {% if cliente.portaria_remota %}<span class="etiqueta">Portaria remota</span>{% endif %}
+      {% if cliente.contato_nome %}<span>{{ cliente.contato_nome }}{% if cliente.contato_telefone %}, {{ cliente.contato_telefone }}{% endif %}</span>{% endif %}
+    </p>
+  </div>
+  <div class="cli-agente" id="cli-agente" aria-live="polite"></div>
+</header>
+
+<section class="saude" aria-label="Saúde geral do cliente">
+  <div class="saude-ticks" id="saude-ticks"></div>
+  <p class="saude-texto" id="saude-texto"></p>
+</section>
+
+<div class="cli-grade">
+  <div class="espinha" id="secoes" aria-live="polite"></div>
+  <aside class="painel cli-eventos" aria-labelledby="t-cli-ev">
+    <div class="painel-cab"><h2 id="t-cli-ev">Eventos deste cliente</h2></div>
+    <ol class="feed feed-compacto" id="feed"></ol>
+  </aside>
+</div>
+{% endblock %}

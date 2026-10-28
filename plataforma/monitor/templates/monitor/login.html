@@ -1,0 +1,22 @@
+{% load static %}<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Entrar | MasterSeg Monitor</title>
+  <link rel="stylesheet" href="{% static 'monitor/app.css' %}">
+</head>
+<body class="pg-login">
+  <main class="login">
+    <p class="marca marca-grande"><span class="marca-sinal" aria-hidden="true"></span><span class="marca-nome">MasterSeg<b>Monitor</b></span></p>
+    <form method="post" class="login-form">
+      {% csrf_token %}
+      {% if form.errors %}<p class="erro" role="alert">Usuário ou senha incorretos. Confira e tente de novo.</p>{% endif %}
+      <label>Usuário<input name="username" autocomplete="username" required autofocus></label>
+      <label>Senha<input name="password" type="password" autocomplete="current-password" required></label>
+      <input type="hidden" name="next" value="{{ next }}">
+      <button type="submit" class="botao">Entrar</button>
+    </form>
+  </main>
+</body>
+</html>

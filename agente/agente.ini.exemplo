@@ -1,0 +1,20 @@
+; Copie para agente.ini e preencha. O token sai do cadastro do agente na plataforma
+; (Cadastros > Agentes > abra o agente > "Arquivo agente.ini").
+
+[plataforma]
+url = https://monitor.seudominio.com.br
+token = COLE_O_TOKEN_AQUI
+; Deixe "sim" em produção. "nao" só para teste com certificado autoassinado.
+verificar_tls = sim
+
+[agente]
+; Quantos equipamentos são testados em paralelo.
+threads = 16
+; De quanto em quanto tempo ler identificação, canais e HDs (mais pesado).
+coleta_detalhes_segundos = 300
+; De quanto em quanto tempo buscar a lista de equipamentos na plataforma.
+recarregar_config_segundos = 300
+; Depois de uma senha recusada (401), quanto esperar antes de tentar a mesma senha
+; de novo. Evita que a câmera bloqueie o usuário. Alterar a senha no cadastro
+; faz o agente tentar de novo já no ciclo seguinte.
+espera_senha_recusada_segundos = 1800

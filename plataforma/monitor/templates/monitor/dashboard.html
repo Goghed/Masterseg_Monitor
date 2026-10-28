@@ -1,0 +1,54 @@
+{% extends "monitor/base.html" %}
+{% block titulo %}Visão geral{% endblock %}
+{% block pagina %}dashboard{% endblock %}
+{% block conteudo %}
+<section class="bloco" aria-labelledby="t-mosaico">
+  <div class="bloco-cab">
+    <h1 id="t-mosaico" class="titulo-tela">Clientes agora</h1>
+    <p class="bloco-resumo" id="mosaico-resumo"></p>
+    <ul class="legenda" aria-label="Legenda de status">
+      <li><i class="st st-online"></i>Tudo online</li>
+      <li><i class="st st-degradado"></i>Degradado</li>
+      <li><i class="st st-offline"></i>Com queda</li>
+      <li><i class="st st-desconhecido"></i>Sem dados</li>
+    </ul>
+  </div>
+  <div class="mosaico" id="mosaico" aria-live="polite"></div>
+</section>
+
+<section class="indicadores" id="kpis" aria-label="Indicadores"></section>
+
+<div class="grade-2">
+  <section class="painel" aria-labelledby="t-serie">
+    <div class="painel-cab">
+      <h2 id="t-serie">Ocorrências nos últimos 30 dias</h2>
+      <ul class="legenda">
+        <li><i class="st st-offline"></i>Crítico</li>
+        <li><i class="st st-degradado"></i>Aviso</li>
+        <li><i class="st st-desconhecido"></i>Informativo</li>
+      </ul>
+    </div>
+    <div class="serie" id="serie" role="img" aria-label="Gráfico de ocorrências por dia"></div>
+  </section>
+
+  <section class="painel" aria-labelledby="t-tipos">
+    <div class="painel-cab"><h2 id="t-tipos">O que mais tem dado problema</h2></div>
+    <ol class="barras" id="tipos"></ol>
+  </section>
+</div>
+
+<div class="grade-2">
+  <section class="painel" aria-labelledby="t-eventos">
+    <div class="painel-cab">
+      <h2 id="t-eventos">Últimos eventos</h2>
+      <span class="painel-nota">Toque num evento para ver a análise</span>
+    </div>
+    <ol class="feed" id="feed"></ol>
+  </section>
+
+  <section class="painel" aria-labelledby="t-top">
+    <div class="painel-cab"><h2 id="t-top">Clientes com mais ocorrências</h2></div>
+    <ol class="ranking" id="top-clientes"></ol>
+  </section>
+</div>
+{% endblock %}
