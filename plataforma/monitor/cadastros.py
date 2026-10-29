@@ -1,7 +1,11 @@
 """Telas de cadastro (clientes, agentes, equipamentos e usuários), no lugar do
 admin do Django. Só para usuários com "Pode editar cadastros" (is_staff)."""
+import io
+import zipfile
 from functools import wraps
+from pathlib import Path
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.decorators import login_required
@@ -10,9 +14,11 @@ from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Count, Q
+from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.text import slugify
 from django.views.decorators.http import require_POST
 
 from .forms import AgenteForm, ClienteForm, EquipamentoForm, LinkWANFormSet, UsuarioForm, criar_lote
@@ -226,7 +232,7 @@ def agente_form(request, pk=None):
         if obj:
             messages.success(request, f"Agente “{obj_salvo}” salvo.")
             return redirect("cad_agentes")
-        messages.success(request, "Agente criado. Copie o agente.ini abaixo para instalar no cliente.")
+        messages.success(request, "Agente criado. Abra esta página no servidor do cliente e baixe o instalador.")
         return redirect("cad_agente", pk=obj_salvo.pk)
 
     contexto = {"aba": "agentes", "form": form, "objeto": obj,
@@ -248,6 +254,59 @@ def agente_form(request, pk=None):
         ]
         contexto["n_equip"] = obj.equipamentos.count()
     return render(request, "monitor/cadastros/agente_form.html", contexto)
+
+
+# Arquivos do pacote Windows: (caminho na pasta do agente, caminho dentro do zip).
+ARQUIVOS_PACOTE = [
+    ("windows/instalar.bat", "instalar.bat"),
+    ("windows/instalar.ps1", "instalar.ps1"),
+    ("windows/desinstalar.bat", "desinstalar.bat"),
+    ("windows/trocar_url.bat", "trocar_url.bat"),
+    ("windows/trocar_url.ps1", "trocar_url.ps1"),
+    ("windows/LEIA-ME.txt", "LEIA-ME.txt"),
+    ("agente.py", "agente.py"),
+    ("verificacoes.py", "verificacoes.py"),
+    ("requirements.txt", "requirements.txt"),
+]
+TEXTO_WINDOWS = {".bat", ".ps1", ".txt", ".ini"}
+
+
+def _crlf(dados):
+    # O cmd.exe se perde em .bat com fim de linha Unix; o clone no Linux pode vir assim.
+    return dados.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+
+
+@staff
+def agente_pacote(request, pk):
+    """Zip com o agente para Windows e o agente.ini deste agente já preenchido:
+    no cliente é só extrair e rodar o instalar.bat."""
+    agente = get_object_or_404(Agente.objects.select_related("cliente"), pk=pk)
+    pasta = Path(settings.MONITOR["PASTA_AGENTE"])
+    if not (pasta / "agente.py").exists():
+        raise Http404(f"Código do agente não encontrado em {pasta}.")
+
+    arquivos = list(ARQUIVOS_PACOTE)
+    arquivos += [(f"drivers/{p.name}", f"drivers/{p.name}") for p in sorted((pasta / "drivers").glob("*.py"))]
+    if (pasta / "windows" / "masterseg-agente.exe").exists():
+        arquivos.append(("windows/masterseg-agente.exe", "masterseg-agente.exe"))
+
+    nome = f"masterseg-agente-{slugify(agente.cliente.chave)}"
+    ini = (f"; Gerado pela plataforma em {_data(timezone.now())} para {agente.nome} ({agente.cliente.chave}).\n"
+           "; Guarde com cuidado: o token da acesso ao cadastro deste cliente.\n"
+           + _agente_ini(request, agente))
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as pacote:
+        for origem, destino in arquivos:
+            dados = (pasta / origem).read_bytes()
+            if Path(destino).suffix in TEXTO_WINDOWS:
+                dados = _crlf(dados)
+            pacote.writestr(f"{nome}/{destino}", dados)
+        pacote.writestr(f"{nome}/agente.ini", _crlf(ini.encode("utf-8")))
+
+    resposta = HttpResponse(buffer.getvalue(), content_type="application/zip")
+    resposta["Content-Disposition"] = f'attachment; filename="{nome}.zip"'
+    resposta["Cache-Control"] = "no-store"
+    return resposta
 
 
 @require_POST

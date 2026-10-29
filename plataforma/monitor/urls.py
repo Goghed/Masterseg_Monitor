@@ -17,6 +17,7 @@ urlpatterns = [
     path("cadastros/agentes/novo/", cadastros.agente_form, name="cad_agente_novo"),
     path("cadastros/agentes/<int:pk>/", cadastros.agente_form, name="cad_agente"),
     path("cadastros/agentes/<int:pk>/token/", cadastros.agente_token, name="cad_agente_token"),
+    path("cadastros/agentes/<int:pk>/instalador/", cadastros.agente_pacote, name="cad_agente_pacote"),
     path("cadastros/agentes/<int:pk>/excluir/", cadastros.agente_excluir, name="cad_agente_excluir"),
     path("cadastros/equipamentos/", cadastros.equipamentos, name="cad_equipamentos"),
     path("cadastros/equipamentos/novo/", cadastros.equipamento_form, name="cad_equipamento_novo"),

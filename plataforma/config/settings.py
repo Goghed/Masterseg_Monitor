@@ -144,6 +144,9 @@ MONITOR = {
     "JANELA_REABERTURA_MIN": int(env("MONITOR_JANELA_REABERTURA_MIN", "30")),
     # A partir de quantas falhas no mesmo incidente ele é tratado como intermitente.
     "INTERMITENTE_FALHAS": int(env("MONITOR_INTERMITENTE_FALHAS", "3")),
+    # Código do agente usado para montar o instalador baixado em Cadastros > Agentes.
+    # Coloque o masterseg-agente.exe em <pasta>/windows/ para o pacote dispensar o Python.
+    "PASTA_AGENTE": Path(env("MONITOR_PASTA_AGENTE", str(BASE_DIR.parent / "agente"))),
 }
 
 TRIAGEM = {

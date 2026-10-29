@@ -605,7 +605,19 @@ body[data-page="cadastros"] { color-scheme: dark; }
 .cad-itens a { color: var(--texto); font-weight: 600; text-decoration: none; }
 .cad-itens a:hover { color: var(--acento); }
 .cad-itens .cad-sub { display: inline; }
+.cad-itens a.cad-link { color: var(--acento); font-size: 13px; font-weight: 500; }
 .cad-n { margin-left: auto; font-stretch: 80%; }
+.cad-instalar { border-color: var(--linha-forte); }
+.cad-passos { margin: 0 0 14px; padding-left: 20px; display: grid; gap: 8px; font-size: 13.5px; color: var(--texto-2); }
+.cad-passos b { color: var(--texto); font-weight: 600; }
+.cad-instalar .cad-botao { width: 100%; }
+.cad-conexao { display: flex; align-items: flex-start; gap: 9px; margin-top: 14px; padding: 10px 12px; border-radius: var(--raio-p); background: var(--base); border: 1px solid var(--linha); font-size: 13.5px; }
+.cad-conexao .st { margin-top: 5px; }
+.cad-conexao[data-st="online"] { border-color: #2c5c4c; color: #b5ecd5; }
+.cad-conexao[data-st="online"] .st { background: var(--online); }
+.cad-conexao[data-st="offline"] { border-color: #5c2f3a; color: #ffb0ab; }
+.cad-conexao[data-st="offline"] .st { background: var(--offline); }
+.cad-conexao[data-st="desconhecido"] .st { animation: piscar 1.6s steps(2, jump-none) infinite; }
 
 .cad-excluir { display: grid; gap: 12px; max-width: 620px; }
 .cad-excluir-nome { font-size: 18px; font-weight: 650; }

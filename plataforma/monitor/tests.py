@@ -70,6 +70,25 @@ class CadastrosTest(TestCase):
         ag.refresh_from_db()
         self.assertNotEqual(ag.token, antigo)
 
+    def test_pacote_do_agente(self):
+        import io
+        import zipfile
+        ag = Agente.objects.create(cliente=self.cli)
+        r = self.client.get(reverse("cad_agente_pacote", args=[ag.pk]))
+        self.assertEqual(r["Content-Type"], "application/zip")
+        self.assertIn('filename="masterseg-agente-ms-0001.zip"', r["Content-Disposition"])
+        z = zipfile.ZipFile(io.BytesIO(r.content))
+        nomes = set(z.namelist())
+        for arquivo in ("instalar.bat", "instalar.ps1", "agente.py", "verificacoes.py",
+                        "requirements.txt", "drivers/__init__.py", "agente.ini"):
+            self.assertIn(f"masterseg-agente-ms-0001/{arquivo}", nomes)
+        ini = z.read("masterseg-agente-ms-0001/agente.ini").decode()
+        self.assertIn(f"token = {ag.token}\r\n", ini)
+        self.assertIn("url = http://testserver\r\n", ini)
+        bat = z.read("masterseg-agente-ms-0001/instalar.bat")
+        self.assertNotIn(b"\n", bat.replace(b"\r\n", b""))  # só CRLF
+        self.assertTrue(z.read("masterseg-agente-ms-0001/instalar.ps1").startswith(b"\xef\xbb\xbf"))
+
     def test_equipamento_senha_cifrada_e_mantida(self):
         self.client.post(reverse("cad_equipamento_novo"), equip_post(self.cli, senha="segredo"))
         eq = Equipamento.objects.get()

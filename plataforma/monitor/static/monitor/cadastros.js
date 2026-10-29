@@ -54,6 +54,42 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
+  // Situação da conexão do agente, atualizada enquanto a página está aberta
+  // (para ver o agente aparecer logo depois de rodar o instalador).
+  const conexao = document.querySelector("[data-conexao-agente]");
+  if (conexao) {
+    const texto = conexao.querySelector("[data-conexao-texto]");
+    const id = Number(conexao.dataset.conexaoAgente);
+    const atualizar = async () => {
+      try {
+        const r = await fetch("/api/agentes/", { headers: { Accept: "application/json" } });
+        if (!r.ok) return;
+        const a = (await r.json()).agentes.find((x) => x.id === id);
+        if (!a) {
+          conexao.dataset.st = "desconhecido";
+          texto.textContent = "Agente ou cliente inativo: a plataforma não aceita a conexão dele.";
+          return;
+        }
+        const quando = a.ultimo_contato ? new Date(a.ultimo_contato) : null;
+        if (a.online) {
+          const seg = Math.max(0, Math.round((Date.now() - quando) / 1000));
+          const maquina = [a.hostname, a.versao && `versão ${a.versao}`].filter(Boolean).join(", ");
+          conexao.dataset.st = "online";
+          texto.textContent = `Conectado. Último contato há ${seg < 60 ? `${seg} s` : `${Math.round(seg / 60)} min`}`
+            + (maquina ? ` (${maquina}).` : ".");
+        } else if (quando) {
+          conexao.dataset.st = "offline";
+          texto.textContent = `Sem contato desde ${quando.toLocaleString("pt-BR")}.`;
+        } else {
+          conexao.dataset.st = "desconhecido";
+          texto.textContent = "Aguardando a primeira conexão do agente.";
+        }
+      } catch { /* sem rede: tenta de novo no próximo ciclo */ }
+    };
+    atualizar();
+    setInterval(atualizar, 5000);
+  }
+
   document.querySelectorAll("[data-copiar]").forEach((botao) => {
     botao.addEventListener("click", async () => {
       const alvo = document.getElementById(botao.dataset.copiar);

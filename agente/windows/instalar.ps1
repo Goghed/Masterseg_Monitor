@@ -8,7 +8,7 @@
     1. Copia o agente para C:\MasterSeg\Agente
     2. Usa o masterseg-agente.exe se ele estiver nesta pasta. Se não estiver, instala
        o Python (via winget) e as dependências num ambiente isolado.
-    3. Cria o agente.ini com a URL e o token
+    3. Cria o agente.ini com a URL e o token (lidos do agente.ini do pacote, se houver)
     4. Roda um ciclo de teste e mostra o resultado
     5. Registra a tarefa agendada "MasterSeg Agente": inicia com o Windows, roda como
        SYSTEM, sem janela, e é reiniciada sozinha se parar.
@@ -58,6 +58,21 @@ $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 if (-not $admin) { Falha "Rode como administrador (clique com o botão direito no instalar.bat > Executar como administrador)." }
 
 # ------------------------------------------------------------------ dados
+# Pacote baixado da plataforma (Cadastros > Agentes > Baixar instalador): URL e token
+# já vêm no agente.ini ao lado do instalador, e nada precisa ser digitado.
+$IniPacote = Join-Path $Origem "agente.ini"
+if ((-not $Url -or -not $Token) -and (Test-Path $IniPacote)) {
+    $ini = Get-Content $IniPacote -Encoding UTF8
+    function Ler-Ini($chave) {
+        $linha = $ini | Where-Object { $_ -match "^\s*$chave\s*=" } | Select-Object -First 1
+        if ($linha) { return ($linha -replace "^\s*$chave\s*=\s*", "").Trim() }
+        return ""
+    }
+    if (-not $Url) { $Url = Ler-Ini "url" }
+    if (-not $Token) { $Token = Ler-Ini "token" }
+    if ((Ler-Ini "verificar_tls") -eq "nao") { $SemTls = $true }
+    Write-Host "Configuração do pacote: $Url" -ForegroundColor Cyan
+}
 if (-not $Url)   { $Url   = Read-Host "URL da plataforma (ex.: https://monitor.seudominio.com.br)" }
 if (-not $Token) { $Token = Read-Host "Token do agente (Cadastros > Agentes > abra o agente)" }
 $Url = $Url.Trim().TrimEnd("/")

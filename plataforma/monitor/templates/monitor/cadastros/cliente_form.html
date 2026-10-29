@@ -11,7 +11,8 @@
       {% for a in agentes %}
       <li><span class="st st-{% if a.online %}online{% elif a.ultimo_contato %}offline{% else %}desconhecido{% endif %}" aria-hidden="true"></span>
         <a href="{% url 'cad_agente' a.pk %}">{{ a.nome }}</a>
-        <span class="cad-sub">{% if a.online %}Comunicando{% elif a.ultimo_contato %}Sem contato{% else %}Nunca conectou{% endif %}{% if not a.ativo %} · inativo{% endif %}</span></li>
+        <span class="cad-sub">{% if a.online %}Comunicando{% elif a.ultimo_contato %}Sem contato{% else %}Nunca conectou{% endif %}{% if not a.ativo %} · inativo{% endif %}</span>
+        <a class="cad-link cad-n" href="{% url 'cad_agente_pacote' a.pk %}" download>Instalador</a></li>
       {% endfor %}
     </ul>
     {% else %}

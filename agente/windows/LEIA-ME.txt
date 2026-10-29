@@ -13,9 +13,14 @@ Sem o .exe o instalador tambem funciona: ele instala o Python sozinho no cliente
 
 NO COMPUTADOR DO CLIENTE
 ------------------------
+  Jeito mais facil: no proprio computador do cliente, entre na plataforma,
+  abra Cadastros > Agentes > o agente e clique em "Baixar instalador".
+  O zip ja vem com a URL e o token: extraia e siga a partir do passo 2.
+
   1. Copie a pasta "agente" inteira (ou so a pasta "windows", se ja tiver o .exe).
   2. Clique com o botao direito em instalar.bat > Executar como administrador.
-  3. Informe a URL da plataforma e o token do agente
+  3. Se o pacote veio da plataforma, nada precisa ser digitado. Senao, informe
+     a URL da plataforma e o token do agente
      (Cadastros > Agentes > abra o agente > bloco "Arquivo agente.ini").
   4. O instalador roda um teste e mostra cada equipamento ONLINE/OFFLINE.
      No final deve aparecer "Relatorio entregue na plataforma."
