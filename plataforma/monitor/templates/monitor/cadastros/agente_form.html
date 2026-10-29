@@ -35,7 +35,7 @@
     <dl class="cad-dados">
       {% for rotulo, valor in situacao %}<div><dt>{{ rotulo }}</dt><dd>{{ valor }}</dd></div>{% endfor %}
     </dl>
-    <p><a class="cad-link" href="{% url 'cad_equipamentos' %}?cliente={{ objeto.cliente_id }}">Equipamentos do cliente</a>
+    <p><a class="cad-link" href="{% url 'cad_cliente' objeto.cliente_id %}#equipamentos">Equipamentos do cliente</a>
       <span class="cad-sub">{{ n_equip }} ligado{{ n_equip|pluralize }} a este agente</span></p>
   </section>
 </aside>

@@ -249,6 +249,8 @@ h1, h2, h3, p { margin: 0; }
 .ag-sub { font-size: 13px; color: var(--texto-2); }
 .ag-gerenciar { margin-left: 8px; font-size: 12.5px; font-weight: 500; color: var(--acento); text-decoration: none; }
 .ag-gerenciar:hover { text-decoration: underline; }
+.f-editar { margin-left: 4px; font-stretch: 100%; font-size: 12.5px; font-weight: 500; color: var(--acento); text-decoration: none; }
+.f-editar:hover { text-decoration: underline; }
 
 /* ---------- página de agentes ---------- */
 .ag-nota { max-width: 820px; margin: -4px 0 16px; font-size: 13.5px; color: var(--texto-3); }
@@ -535,7 +537,7 @@ body[data-page="cadastros"] { color-scheme: dark; }
 .cad-filtro { display: grid; gap: 4px; font-size: 12px; color: var(--texto-3); }
 .cad-filtro select { min-width: 150px; }
 .cad-limpar { align-self: center; font-size: 13.5px; color: var(--texto-2); }
-.cad-filtros input, .cad-filtros select,
+.cad-filtros input, .cad-filtros select, .cad-equip-acoes input,
 .cad-form input:not([type="checkbox"]), .cad-form select, .cad-form textarea {
   width: 100%; height: 38px; padding: 0 11px; font: inherit; font-size: 14px; color: var(--texto);
   background: var(--base); border: 1px solid var(--linha); border-radius: 8px;
@@ -583,7 +585,7 @@ body[data-page="cadastros"] { color-scheme: dark; }
 .campo-check input { width: 18px; height: 18px; margin: 0; accent-color: var(--acento); }
 .campo-ajuda { font-size: 12.5px; line-height: 1.4; color: var(--texto-3); }
 .campo-erro { font-size: 13px; color: #ffb0ab; }
-.com-erro input, .com-erro select, .com-erro textarea { border-color: var(--offline) !important; }
+.com-erro input, .com-erro select, .com-erro textarea { border-color: #ffb0ab; }
 .cad-acoes { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .lote-cameras .help { margin: 12px 0 0 !important; font-size: 13px; color: #b9d1ff; }
 #links-lista { margin-bottom: 12px; }
@@ -636,6 +638,28 @@ body[data-page="cadastros"] { color-scheme: dark; }
 }
 
 /* ---------------------------------------------------------------- cliente GOLD */
-.medalha { display: inline-block; width: 1.15em; height: 1.15em; vertical-align: -0.18em; margin-left: .3em;
-  flex: none; filter: drop-shadow(0 1px 2px rgb(0 0 0 / .35)); }
-.cli-nome .medalha { width: .8em; height: .8em; vertical-align: -0.04em; }
+.medalha { display: inline-block; width: 14px; height: 14px; vertical-align: -2px; margin-left: 5px;
+  flex: none; filter: drop-shadow(0 1px 1px rgb(0 0 0 / .35)); }
+.cli-nome .medalha { width: 22px; height: 22px; vertical-align: 2px; margin-left: 8px; }
+.cad-interfaces { margin: 4px 0 12px; } .cad-interfaces summary { cursor: pointer; color: var(--acento); font-size: 13px; } .cad-interfaces code { font-size: 12.5px; }
+
+/* ---------------------------------------------------------------- equipamentos dentro do cliente */
+.cad-equip { margin-top: 28px; }
+.cad-equip-cab { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.cad-equip-cab h2 { font-stretch: 75%; font-weight: 750; font-size: 24px; }
+.cad-equip-acoes { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.cad-equip-acoes .cad-busca { min-width: 260px; }
+.cad-grupo { margin-bottom: 14px; }
+.cad-grupo-cab { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 12px 14px 4px; }
+.cad-grupo-cab h3 { font-size: 15px; font-weight: 650; }
+.cad-grupo-cab .cad-n { margin-left: 4px; color: var(--texto-2); font-weight: 500; }
+.cad-grupo .cad-tabela th:nth-child(1) { width: 36%; }
+.cad-acoes-linha { text-align: right; white-space: nowrap; }
+.cad-acoes-linha a + a { margin-left: 12px; }
+.cad-link.cad-link-perigo { color: #ffb0ab; }
+.cad-equip-vazio { padding: 28px; border: 1px dashed var(--linha-forte); border-radius: var(--raio-p); text-align: center; display: grid; gap: 10px; justify-items: center; }
+.cad-nada { padding: 16px 0; color: var(--texto-2); }
+@media (max-width: 720px) {
+  .cad-grupo .cad-tabela th:nth-child(4), .cad-grupo .cad-tabela td:nth-child(4) { display: none; }
+  .cad-equip-acoes, .cad-equip-acoes .cad-busca { width: 100%; min-width: 0; }
+}

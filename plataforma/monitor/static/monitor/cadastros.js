@@ -90,6 +90,26 @@ document.addEventListener("DOMContentLoaded", () => {
     setInterval(atualizar, 5000);
   }
 
+  // Equipamentos dentro do cliente: filtro rápido que esconde os grupos sem resultado.
+  const filtroEquip = document.querySelector("[data-filtrar-equip]");
+  if (filtroEquip) {
+    const vazio = document.querySelector("[data-filtro-vazio]");
+    filtroEquip.addEventListener("input", () => {
+      const termo = filtroEquip.value.trim().toLowerCase();
+      let algum = false;
+      document.querySelectorAll("[data-grupo]").forEach((grupo) => {
+        let n = 0;
+        grupo.querySelectorAll("tr[data-busca]").forEach((tr) => {
+          tr.hidden = termo && !tr.dataset.busca.includes(termo);
+          if (!tr.hidden) n += 1;
+        });
+        grupo.hidden = n === 0;
+        algum ||= n > 0;
+      });
+      vazio.hidden = algum;
+    });
+  }
+
   document.querySelectorAll("[data-copiar]").forEach((botao) => {
     botao.addEventListener("click", async () => {
       const alvo = document.getElementById(botao.dataset.copiar);

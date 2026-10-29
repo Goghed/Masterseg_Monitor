@@ -149,24 +149,41 @@ def cliente_form(request, pk=None):
     obj = get_object_or_404(Cliente, pk=pk) if pk else None
     form = ClienteForm(request.POST or None, instance=obj)
     if request.method == "POST" and form.is_valid():
-        obj_salvo = form.save()
+        with transaction.atomic():
+            obj_salvo = form.save()
+            if not obj:
+                # Todo cliente precisa de um agente; já fica pronto para baixar o instalador.
+                Agente.objects.create(cliente=obj_salvo)
         if obj:
             messages.success(request, f"Cliente “{obj_salvo}” salvo.")
-            return redirect("cad_clientes")
-        messages.success(request, f"Cliente “{obj_salvo}” criado. Agora cadastre o agente e os equipamentos.")
-        return redirect("cad_cliente", pk=obj_salvo.pk)
+            return redirect("cad_cliente", pk=obj_salvo.pk)
+        messages.success(request, f"Cliente “{obj_salvo}” criado, já com o agente. "
+                                  "Agora cadastre os equipamentos dele.")
+        return redirect(reverse("cad_cliente", args=[obj_salvo.pk]) + "#equipamentos")
 
     contexto = {"aba": "clientes", "form": form, "objeto": obj,
                 "titulo": obj.nome if obj else "Novo cliente",
-                "secoes": _secoes(form, SECOES_CLIENTE), "voltar": reverse("cad_clientes")}
+                "subtitulo": obj.chave if obj else "",
+                "secoes": _secoes(form, SECOES_CLIENTE), "voltar": reverse("cad_clientes"),
+                "rotulo_salvar": "Salvar dados do cliente" if obj else "Criar cliente e cadastrar equipamentos"}
     if obj:
         contexto["excluir_url"] = reverse("cad_cliente_excluir", args=[obj.pk])
         contexto["agentes"] = obj.agentes.order_by("nome")
-        por_status = dict(obj.equipamentos.filter(ativo=True).values_list("status")
-                          .annotate(n=Count("pk")).values_list("status", "n"))
-        contexto["resumo_status"] = [(s, rotulo, por_status.get(s, 0)) for s, rotulo in Status.choices]
-        contexto["total_equip"] = obj.equipamentos.count()
+        contexto["grupos"] = _equipamentos_por_categoria(obj)
+        contexto["total_equip"] = sum(len(g["itens"]) for g in contexto["grupos"])
     return render(request, "monitor/cadastros/cliente_form.html", contexto)
+
+
+def _equipamentos_por_categoria(cliente):
+    grupos = {}
+    for e in cliente.equipamentos.order_by("ordem", "nome"):
+        grupos.setdefault(e.categoria, []).append(e)
+    return [{"categoria": c, "rotulo": rotulo, "itens": grupos[c]}
+            for c, rotulo in Equipamento.Categoria.choices if c in grupos]
+
+
+def _url_equipamentos(cliente_id):
+    return reverse("cad_cliente", args=[cliente_id]) + "#equipamentos"
 
 
 @staff
@@ -345,45 +362,20 @@ SECOES_EQUIP = [
 
 @staff
 def equipamentos(request):
-    qs = _aplicar_ativo(request, Equipamento.objects.select_related("cliente")
-                        .order_by("cliente__chave", "ordem", "nome"))
+    """Os equipamentos ficam dentro de cada cliente; o endereço antigo leva para lá."""
     if cid := _cliente_get(request):
-        qs = qs.filter(cliente_id=cid)
-    if cat := request.GET.get("categoria"):
-        qs = qs.filter(categoria=cat)
-    if st := request.GET.get("status"):
-        qs = qs.filter(status=st)
-
-    def linha(e):
-        return {"url": reverse("cad_equipamento", args=[e.pk]), "inativo": not e.ativo, "celulas": [
-            {"t": e.nome, "forte": True, "sub": " ".join(filter(None, [e.get_fabricante_display()
-                                                                      if e.fabricante != "outro" else "",
-                                                                      e.modelo]))},
-            {"t": e.cliente.chave, "sub": e.cliente.nome},
-            {"t": e.get_categoria_display(), "tag": "Crítico" if e.critico else ""},
-            {"t": e.ip, "mono": True},
-            {"t": e.get_status_display(), "st": e.status},
-            {"t": _data(e.ultimo_check)},
-        ]}
-
-    novo = reverse("cad_equipamento_novo") + (f"?cliente={cid}" if cid else "")
-    return _lista(request, aba="equipamentos", titulo="Equipamentos", qs=qs, linha=linha,
-                  busca=["nome", "ip", "modelo", "serial", "cliente__nome", "cliente__chave"],
-                  busca_dica="Nome, IP, modelo, serial ou cliente",
-                  colunas=["Equipamento", "Cliente", "Categoria", "IP / host", "Status", "Última checagem"],
-                  filtros=[_filtro_clientes(request),
-                           _filtro(request, "categoria", "Categoria", Equipamento.Categoria.choices),
-                           _filtro(request, "status", "Status", Status.choices),
-                           _filtro(request, "ativo", "Situação", FILTRO_ATIVO)],
-                  novo_url=novo, novo_rotulo="Novo equipamento")
+        return redirect(_url_equipamentos(cid))
+    return redirect("cad_clientes")
 
 
 @staff
 def equipamento_form(request, pk=None):
     obj = get_object_or_404(Equipamento.objects.select_related("cliente"), pk=pk) if pk else None
+    cliente = obj.cliente if obj else Cliente.objects.filter(pk=_cliente_get(request)).first()
     dados = request.POST or None
-    form = EquipamentoForm(dados, instance=obj,
-                           initial={"cliente": _cliente_get(request)} if not obj else None)
+    categoria = request.GET.get("categoria")
+    form = EquipamentoForm(dados, instance=obj, cliente=cliente,
+                           initial={"categoria": categoria} if categoria and not obj else None)
     links = LinkWANFormSet(dados, instance=obj or Equipamento(), prefix="links")
 
     if request.method == "POST" and form.is_valid() and links.is_valid():
@@ -393,21 +385,23 @@ def equipamento_form(request, pk=None):
             links.save()
             criar_lote(obj_salvo, form.lote)
         if len(form.lote) > 1:
-            messages.success(request, f"{len(form.lote)} câmeras cadastradas: {form.lote[0][0]} "
+            messages.success(request, f"{len(form.lote)} equipamentos cadastrados: {form.lote[0][0]} "
                                       f"({form.lote[0][1]}) até {form.lote[-1][0]} ({form.lote[-1][1]}).")
         else:
             messages.success(request, f"Equipamento “{obj_salvo.nome}” salvo.")
         if "_outro" in request.POST:
             return redirect(reverse("cad_equipamento_novo") + f"?cliente={obj_salvo.cliente_id}")
-        return redirect(reverse("cad_equipamentos") + f"?cliente={obj_salvo.cliente_id}")
+        return redirect(_url_equipamentos(obj_salvo.cliente_id))
 
     definicao = [s for s in SECOES_EQUIP if not (obj and s[2] == "lote-cameras")]
-    contexto = {"aba": "equipamentos", "form": form, "links": links, "objeto": obj,
+    contexto = {"aba": "clientes", "form": form, "links": links, "objeto": obj, "cliente": cliente,
                 "titulo": obj.nome if obj else "Novo equipamento",
-                "subtitulo": str(obj.cliente) if obj else "",
+                "subtitulo": f"{cliente.chave} · {cliente.nome}" if cliente else "",
                 "secoes": _secoes(form, definicao), "salvar_outro": True,
                 "tem_links": bool(obj and obj.links.exists()),
-                "voltar": reverse("cad_equipamentos") + (f"?cliente={obj.cliente_id}" if obj else "")}
+                "interfaces_roteador": (obj.detalhes or {}).get("interfaces") or [] if obj else [],
+                "voltar": _url_equipamentos(cliente.pk) if cliente else reverse("cad_clientes"),
+                "rotulo_voltar": f"Voltar para {cliente.nome}" if cliente else ""}
     if obj:
         contexto["excluir_url"] = reverse("cad_equipamento_excluir", args=[obj.pk])
         contexto["estado"] = [
@@ -428,8 +422,8 @@ def equipamento_excluir(request, pk):
     obj = get_object_or_404(Equipamento, pk=pk)
     n = obj.dependentes.count()
     return _excluir(
-        request, aba="equipamentos", objeto=obj, tipo="equipamento",
-        voltar=reverse("cad_equipamentos") + f"?cliente={obj.cliente_id}",
+        request, aba="clientes", objeto=obj, tipo="equipamento",
+        voltar=_url_equipamentos(obj.cliente_id),
         consequencias=["O histórico de medições dele é apagado; os eventos continuam no histórico do cliente.",
                        f"{_qtd(n, 'equipamento depende', 'equipamentos dependem')} dele e "
                        f"{'fica' if n == 1 else 'ficam'} sem dependência." if n else ""],

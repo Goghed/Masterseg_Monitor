@@ -6,7 +6,19 @@
 {% block depois_secoes %}
 <fieldset class="cad-secao secao-links" data-tem-links="{{ tem_links|yesno:'1,' }}">
   <legend>Links de internet</legend>
-  <p class="cad-nota">Opcional, só para gateway. Sem cadastro, o agente detecta os links pelas rotas padrão do roteador.</p>
+  <p class="cad-nota">Opcional, só para gateway. Sem cadastro, o agente detecta os links pelas rotas padrão do roteador.
+    {% if interfaces_roteador %}No campo interface, escolha um nome da lista lida do roteador. Com PPPoE, pode ser a porta (ether1) ou o próprio PPPoE.
+    {% elif objeto %}A lista de interfaces aparece aqui depois que o agente (1.0.7 ou mais novo) ler o roteador.{% endif %}</p>
+  {% if interfaces_roteador %}
+  <datalist id="interfaces-roteador">
+    {% for i in interfaces_roteador %}<option value="{{ i.nome }}">{{ i.tipo }}{% if i.comentario %} · {{ i.comentario }}{% endif %} · {{ i.running|yesno:"ativa,sem sinal" }}</option>{% endfor %}
+  </datalist>
+  <details class="cad-interfaces"><summary>Interfaces do roteador ({{ interfaces_roteador|length }})</summary>
+    <ul class="cad-itens">{% for i in interfaces_roteador %}
+      <li><span class="st st-{{ i.running|yesno:'online,offline' }}" aria-hidden="true"></span> <code>{{ i.nome }}</code>
+        <span class="cad-sub">{{ i.tipo }}{% if i.comentario %} · {{ i.comentario }}{% endif %}</span></li>{% endfor %}
+    </ul></details>
+  {% endif %}
   {{ links.management_form }}
   {% for e in links.non_form_errors %}<p class="erro">{{ e }}</p>{% endfor %}
   <div id="links-lista">
@@ -29,4 +41,4 @@
 </aside>
 {% endif %}{% endblock %}
 
-{% block scripts %}{{ block.super }}<script src="{% static 'monitor/admin_lote.js' %}" defer></script>{% endblock %}
+{% block scripts %}{{ block.super }}<script src="{% static 'monitor/admin_lote.js' %}?v={{ v }}" defer></script>{% endblock %}

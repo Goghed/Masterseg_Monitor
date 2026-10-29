@@ -107,7 +107,7 @@ class EquipamentoAdmin(admin.ModelAdmin):
         criar_lote(obj, lote)
         self.message_user(
             request,
-            f"{len(lote)} câmeras cadastradas: {lote[0][0]} ({lote[0][1]}) "
+            f"{len(lote)} equipamentos cadastrados: {lote[0][0]} ({lote[0][1]}) "
             f"até {lote[-1][0]} ({lote[-1][1]}).",
             messages.SUCCESS,
         )

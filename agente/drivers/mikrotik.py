@@ -238,6 +238,7 @@ class MikroTik(Driver):
         }
         det.update(self._saude(a))
         det["links"] = self._links(a)
+        det["interfaces"] = self.interfaces_vistas
         det["internet"] = self._ping(a, self._alvo_padrao())
         det["netwatch"] = self._netwatch(a)
         res = {"firmware": f"RouterOS {det['versao_routeros']}".strip(), "detalhes": det}
@@ -345,14 +346,26 @@ class MikroTik(Driver):
         # PPPoE com o modem em bridge: a porta física (ether1) só dá o sinal; IP,
         # rota, gateway e tráfego do link estão no cliente PPPoE que roda nela.
         pppoe_na_porta = {p.get("interface"): nome for nome, p in pppoe.items() if p.get("interface")}
-        por_minuscula = {n.lower(): n for n in interfaces}
+        def chave(nome):
+            return re.sub(r"^eth(\d)", r"ether\1", re.sub(r"[\s_-]", "", (nome or "").lower()))
+
+        por_chave = {chave(n): n for n in interfaces}
+        por_comentario = {chave(i.get("comment")): n for n, i in interfaces.items() if i.get("comment")}
 
         def nome_real(iface):
-            """Cadastro escrito diferente do roteador: "Eth1" acha a ether1."""
+            """Cadastro escrito diferente do roteador: "Eth1" acha a ether1, "pppoe-out1 vivo"
+            acha a "pppoe-out 1-Vivo"; também vale o comentário da interface."""
             if iface in interfaces:
                 return iface
-            chave = iface.lower().replace(" ", "")
-            return por_minuscula.get(chave) or por_minuscula.get(re.sub(r"^eth(\d)", r"ether\1", chave))
+            return por_chave.get(chave(iface)) or por_comentario.get(chave(iface))
+
+        # Interfaces que podem ser link: o cadastro do equipamento sugere estes nomes.
+        tipos_link = ("ether", "pppoe-out", "lte", "vlan", "wlan", "sfp", "l2tp-out", "sstp-out", "ovpn-out", "wg")
+        self.interfaces_vistas = [
+            {"nome": n, "tipo": i.get("type", ""), "running": verdadeiro(i.get("running")),
+             "comentario": i.get("comment", "")}
+            for n, i in interfaces.items() if (i.get("type") or "").startswith(tipos_link)][:80]
+        sugestoes = [i["nome"] for i in self.interfaces_vistas if i["tipo"] == "pppoe-out" or i["running"]]
 
         def um_link(iface):
             cad = self.links_cadastrados.get(iface, {})
@@ -360,8 +373,8 @@ class MikroTik(Driver):
             if not real:
                 return {"interface": iface, "nome": cad.get("nome") or iface, "status": "nao_encontrada",
                         "running": False, "principal": False,
-                        "motivo": f"O roteador não tem interface chamada {iface}. Confira o nome no cadastro "
-                                  f"(ex.: ether1 ou pppoe-out1)."}
+                        "motivo": f"O roteador não tem interface chamada {iface}. Escolha o nome na lista "
+                                  f"do cadastro do link. No roteador: {', '.join(sugestoes) or 'nenhuma'}."}
             if real in pppoe:
                 logica, fisica = real, pppoe[real].get("interface") or real
             else:

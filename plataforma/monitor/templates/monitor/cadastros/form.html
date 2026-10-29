@@ -1,7 +1,7 @@
 {% extends "monitor/cadastros/base.html" %}
 {% block titulo %}{{ titulo }}{% endblock %}
 {% block cad %}
-<a class="voltar" href="{{ voltar }}">Voltar para a lista</a>
+<a class="voltar" href="{{ voltar }}">{{ rotulo_voltar|default:"Voltar para a lista" }}</a>
 <div class="cad-cab">
   <div>
     <h1 class="titulo-tela">{{ titulo }}</h1>
@@ -29,7 +29,7 @@
     {% block depois_secoes %}{% endblock %}
 
     <div class="cad-acoes">
-      <button class="cad-botao cad-botao-forte" type="submit">Salvar</button>
+      <button class="cad-botao cad-botao-forte" type="submit">{{ rotulo_salvar|default:"Salvar" }}</button>
       {% if salvar_outro %}<button class="cad-botao" type="submit" name="_outro" value="1">Salvar e cadastrar outro</button>{% endif %}
       <a class="cad-botao cad-botao-leve" href="{{ voltar }}">Cancelar</a>
       {% if excluir_url %}<a class="cad-perigo" href="{{ excluir_url }}">Excluir</a>{% endif %}
@@ -37,4 +37,5 @@
   </form>
   {% block lateral %}{% endblock %}
 </div>
+{% block abaixo %}{% endblock %}
 {% endblock %}

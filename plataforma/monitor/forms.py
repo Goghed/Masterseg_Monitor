@@ -44,6 +44,13 @@ class AgenteForm(forms.ModelForm):
         self.fields["cliente"].queryset = Cliente.objects.order_by("chave")
 
 
+# Categorias em que costuma haver vários iguais (mesmo usuário e senha, só o IP muda).
+CATEGORIAS_LOTE = {
+    Equipamento.Categoria.CAMERA, Equipamento.Categoria.GRAVADOR, Equipamento.Categoria.SERVIDOR,
+    Equipamento.Categoria.ALARME, Equipamento.Categoria.ACESSO, Equipamento.Categoria.FACIAL,
+}
+
+
 class EquipamentoForm(forms.ModelForm):
     # autocomplete="new-password": sem isso o navegador preenche a senha salva do
     # site (de outro equipamento) e ela sobrescreve a deste ao salvar.
@@ -54,12 +61,12 @@ class EquipamentoForm(forms.ModelForm):
     )
     quantidade = forms.IntegerField(
         required=False, min_value=1, max_value=254, initial=1,
-        help_text="Quantas câmeras cadastrar. O IP acima é o da primeira; as seguintes "
+        help_text="Quantos cadastrar. O IP acima é o do primeiro; os seguintes "
                   "recebem os IPs em sequência (último octeto +1) e a mesma configuração.",
     )
     numero_inicial = forms.IntegerField(
         required=False, min_value=0, initial=1,
-        help_text="Numeração acrescentada ao nome (ex.: “Câmera” vira “Câmera 01”, “Câmera 02”…).",
+        help_text="Numeração acrescentada ao nome (ex.: “DVR” vira “DVR 01”, “DVR 02”…).",
     )
 
     class Meta:
@@ -69,13 +76,20 @@ class EquipamentoForm(forms.ModelForm):
                   "usuario", "depende_de"]
         widgets = {"agente": SelectPorCliente, "depende_de": SelectPorCliente}
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, cliente=None, **kwargs):
+        """Com `cliente`, o equipamento fica preso a ele: o campo some e as listas de
+        agente e "depende de" mostram só o que é dele."""
         super().__init__(*args, **kwargs)
         self.lote = []
         if "cliente" in self.fields:
             self.fields["cliente"].queryset = Cliente.objects.order_by("chave")
+            if cliente:
+                self.fields["cliente"].initial = cliente.pk
+                self.fields["cliente"].widget = forms.HiddenInput()
         if "agente" in self.fields:
             agentes = Agente.objects.select_related("cliente").order_by("cliente__chave", "nome")
+            if cliente:
+                agentes = agentes.filter(cliente=cliente)
             self.fields["agente"].queryset = agentes
             self.fields["agente"].widget.clientes = {str(a.pk): str(a.cliente_id) for a in agentes}
         if "depende_de" in self.fields:
@@ -84,6 +98,8 @@ class EquipamentoForm(forms.ModelForm):
                                               | Q(pk=self.instance.depende_de_id))
             if self.instance.pk:
                 pais = pais.exclude(pk=self.instance.pk)
+            if cliente:
+                pais = pais.filter(cliente=cliente)
             pais = pais.order_by("nome")
             self.fields["depende_de"].queryset = pais
             self.fields["depende_de"].widget.clientes = {
@@ -101,8 +117,9 @@ class EquipamentoForm(forms.ModelForm):
         qtd = dados.get("quantidade") or 1
         if self.instance.pk or qtd <= 1:
             return dados
-        if dados.get("categoria") != Equipamento.Categoria.CAMERA:
-            raise forms.ValidationError("Cadastro em lote está disponível só para câmeras.")
+        if dados.get("categoria") not in CATEGORIAS_LOTE:
+            nomes = ", ".join(str(Equipamento.Categoria(c).label) for c in sorted(CATEGORIAS_LOTE))
+            raise forms.ValidationError(f"Cadastro em lote está disponível para: {nomes}.")
         try:
             ip = ipaddress.IPv4Address((dados.get("ip") or "").strip())
         except ValueError:
@@ -144,7 +161,7 @@ class EquipamentoForm(forms.ModelForm):
 
 
 def criar_lote(obj, lote):
-    """Cria as câmeras 2..N do lote copiando a primeira (já salva)."""
+    """Cria os equipamentos 2..N do lote copiando o primeiro (já salvo)."""
     for nome, ip in lote[1:]:
         copia = Equipamento.objects.get(pk=obj.pk)
         copia.pk = None
@@ -157,6 +174,8 @@ LinkWANFormSet = forms.inlineformset_factory(
     Equipamento, LinkWAN, extra=0, can_delete=True,
     fields=["interface", "nome", "provedor", "download_mbps", "upload_mbps",
             "tabela_roteamento", "alvo_ping", "contato_operadora", "designacao"],
+    # Sugere os nomes que o agente leu do roteador (datalist no cadastro do equipamento).
+    widgets={"interface": forms.TextInput(attrs={"list": "interfaces-roteador", "autocomplete": "off"})},
 )
 
 

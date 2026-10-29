@@ -194,7 +194,8 @@
     sem_contato: "Agente: SEM CONTATO (status congelados)", sem_agente: "Agente: não instalado",
   };
   const resumoAgente = (estado) => ROTULO_AGENTE[estado] || "";
-  const MEDALHA = `<svg class="medalha" viewBox="0 0 24 24" role="img" aria-label="Cliente GOLD"><title>Cliente GOLD</title><path d="M6 1h4.5L13 8.5 9.5 9.5z" fill="#3b6fd8"/><path d="M18 1h-4.5L11 8.5l3.5 1z" fill="#2a56b8"/><circle cx="12" cy="15.2" r="7" fill="#f2c230" stroke="#a87b06" stroke-width="1.2"/><path d="M12 11l1 2.6 2.8.2-2.2 1.8.8 2.7L12 16.7l-2.4 1.6.8-2.7-2.2-1.8 2.8-.2z" fill="#fff4c2" stroke="#a87b06" stroke-width=".5"/></svg>`;
+  const STAFF = document.body.dataset.staff === "true";
+  const MEDALHA = `<svg class="medalha" width="14" height="14" viewBox="0 0 24 24" role="img" aria-label="Cliente GOLD"><title>Cliente GOLD</title><path d="M6 1h4.5L13 8.5 9.5 9.5z" fill="#3b6fd8"/><path d="M18 1h-4.5L11 8.5l3.5 1z" fill="#2a56b8"/><circle cx="12" cy="15.2" r="7" fill="#f2c230" stroke="#a87b06" stroke-width="1.2"/><path d="M12 11l1 2.6 2.8.2-2.2 1.8.8 2.7L12 16.7l-2.4 1.6.8-2.7-2.2-1.8 2.8-.2z" fill="#fff4c2" stroke="#a87b06" stroke-width=".5"/></svg>`;
 
   function resumoEquipamentos(eq) {
     const linhas = [`Equipamentos: ${eq.online} de ${eq.total} online`];
@@ -346,7 +347,7 @@
       $("#cli-agente").innerHTML = ag ? `
         <i class="st st-${ag.online ? "online" : "offline"}"></i>
         <div><p class="ag-titulo">${!ag.online ? "Agente sem contato" : ag.pausado ? "Agente pausado: status congelados" : "Agente reportando"}
-          <a class="ag-gerenciar" href="/agentes/">Gerenciar</a></p>
+          <a class="ag-gerenciar" href="${STAFF ? `/cadastros/agentes/${ag.id}/` : "/agentes/"}">${STAFF ? "Editar agente" : "Gerenciar"}</a></p>
         <p class="ag-sub">${esc(ag.hostname || ag.nome)}${ag.ip_local ? `, ${esc(ag.ip_local)}` : ""}. Último contato ${ha(ag.ultimo_contato)}${ag.versao ? `, versão ${esc(ag.versao)}` : ""}</p></div>`
         : `<i class="st st-desconhecido"></i><div><p class="ag-titulo">Nenhum agente cadastrado</p><p class="ag-sub">Crie um em Cadastros para gerar o token.</p></div>`;
 
@@ -435,7 +436,7 @@
 
     return `<article class="ficha" data-st="${e.status}"${e.incidente && e.incidente.chamar_tecnico ? ' data-tecnico="true"' : ""}>
       <div>
-        <p class="f-nome"><i class="st st-${e.status}"></i>${esc(e.nome)}</p>
+        <p class="f-nome"><i class="st st-${e.status}"></i>${esc(e.nome)}${STAFF ? `<a class="f-editar" href="/cadastros/equipamentos/${e.id}/">Editar</a>` : ""}</p>
         <p class="f-modelo">${esc([e.fabricante === "Outro" ? "" : e.fabricante, e.modelo].filter(Boolean).join(" "))}${e.critico ? ", marcado como crítico" : ""}</p>
         <p class="f-estado">${estadoTexto(e)}</p>
       </div>

@@ -1,5 +1,8 @@
-// Cadastro de câmeras em lote: mostra a seção só para a categoria Câmera
+// Cadastro em lote: mostra a seção só para as categorias que aceitam lote
 // e exibe a faixa de nomes/IPs que será criada.
+// Mesma lista de CATEGORIAS_LOTE em forms.py.
+const CATEGORIAS_LOTE = ["camera", "gravador", "servidor", "alarme", "acesso", "facial"];
+
 document.addEventListener("DOMContentLoaded", () => {
   const caixa = document.querySelector("fieldset.lote-cameras");
   const categoria = document.getElementById("id_categoria");
@@ -23,7 +26,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function atualizar() {
-    caixa.style.display = categoria.value === "camera" ? "" : "none";
+    caixa.style.display = CATEGORIAS_LOTE.includes(categoria.value) ? "" : "none";
     const n = parseInt(qtd.value, 10) || 1;
     const partes = ip.value.trim().split(".");
     if (n <= 1) { previa.textContent = ""; return; }
@@ -35,12 +38,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const primeiro = +partes[3];
     const ultimo = primeiro + n - 1;
     if (ultimo > 254) {
-      previa.textContent = `A faixa passaria de ${base}.254 (máximo ${255 - primeiro} câmeras).`;
+      previa.textContent = `A faixa passaria de ${base}.254 (máximo ${255 - primeiro} equipamentos).`;
       return;
     }
     const i0 = inicio.value === "" ? 1 : parseInt(inicio.value, 10) || 0;
     const fim = i0 + n - 1;
-    previa.textContent = `Serão criadas ${n} câmeras: “${rotulo(i0, fim)}” (${base}.${primeiro}) `
+    previa.textContent = `Serão criados ${n} equipamentos: “${rotulo(i0, fim)}” (${base}.${primeiro}) `
       + `até “${rotulo(fim, fim)}” (${base}.${ultimo}).`;
   }
 

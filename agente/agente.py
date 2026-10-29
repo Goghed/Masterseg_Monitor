@@ -30,7 +30,7 @@ from drivers import DRIVERS, escolher_driver  # noqa: E402
 from drivers.base import ErroDriver, SenhaRecusada  # noqa: E402
 from verificacoes import alcancavel  # noqa: E402
 
-VERSAO = "1.0.6"
+VERSAO = "1.0.7"
 log = logging.getLogger("agente")
 
 

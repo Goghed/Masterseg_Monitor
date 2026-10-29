@@ -112,7 +112,8 @@ class Equipamento(models.Model):
         CAMERA = "camera", "Câmera"
         SWITCH = "switch", "Switch gerenciável"
         ALARME = "alarme", "Central de alarme"
-        ACESSO = "acesso", "Controle de acesso"
+        ACESSO = "acesso", "Controladora de acesso"
+        FACIAL = "facial", "Leitor facial"
         INTERFONE = "interfone", "Interfone / porteiro"
         OUTRO = "outro", "Outro"
 

@@ -29,13 +29,19 @@ class CadastrosTest(TestCase):
         for nome, args in [("cad_clientes", []), ("cad_cliente_novo", []), ("cad_cliente", [self.cli.pk]),
                            ("cad_cliente_excluir", [self.cli.pk]), ("cad_agentes", []),
                            ("cad_agente_novo", []), ("cad_agente", [ag.pk]), ("cad_agente_excluir", [ag.pk]),
-                           ("cad_equipamentos", []), ("cad_equipamento_novo", []),
+                           ("cad_equipamento_novo", []),
                            ("cad_equipamento", [eq.pk]), ("cad_equipamento_excluir", [eq.pk]),
                            ("cad_usuarios", []), ("cad_usuario_novo", []), ("cad_usuario", [self.staff.pk])]:
             with self.subTest(nome):
                 self.assertEqual(self.client.get(reverse(nome, args=args)).status_code, 200)
-        r = self.client.get(reverse("cad_equipamentos") + f"?cliente={self.cli.pk}&categoria=gateway&q=GW")
+        # Os equipamentos ficam dentro do cliente, agrupados por categoria.
+        r = self.client.get(reverse("cad_cliente", args=[self.cli.pk]))
         self.assertContains(r, "10.0.0.1")
+        self.assertContains(r, "Gateway / roteador")
+        self.assertNotContains(self.client.get(reverse("cad_cliente", args=[self.outro.pk])), "10.0.0.1")
+        r = self.client.get(reverse("cad_equipamentos") + f"?cliente={self.cli.pk}")
+        self.assertRedirects(r, reverse("cad_cliente", args=[self.cli.pk]) + "#equipamentos",
+                             fetch_redirect_response=False)
 
     def test_so_staff(self):
         comum = User.objects.create_user("comum", password="x")
@@ -47,7 +53,9 @@ class CadastrosTest(TestCase):
     def test_cliente_criar_editar_excluir(self):
         r = self.client.post(reverse("cad_cliente_novo"), {"chave": "MS-0003", "nome": "Novo", "ativo": "on"})
         novo = Cliente.objects.get(chave="MS-0003")
-        self.assertRedirects(r, reverse("cad_cliente", args=[novo.pk]))
+        self.assertRedirects(r, reverse("cad_cliente", args=[novo.pk]) + "#equipamentos",
+                             fetch_redirect_response=False)
+        self.assertEqual(novo.agentes.count(), 1)  # cliente novo já nasce com o agente
         self.client.post(reverse("cad_cliente", args=[novo.pk]), {"chave": "MS-0003", "nome": "Novo 2"})
         novo.refresh_from_db()
         self.assertEqual((novo.nome, novo.ativo), ("Novo 2", False))
@@ -63,6 +71,10 @@ class CadastrosTest(TestCase):
         self.assertTrue(self.cli.gold)
         self.assertContains(self.client.get(reverse("cliente", args=[self.cli.chave])), 'class="medalha"')
         self.assertNotContains(self.client.get(reverse("cliente", args=[self.outro.chave])), 'class="medalha"')
+        r = self.client.get(reverse("cliente", args=[self.outro.chave]))
+        self.assertContains(r, 'data-staff="true"')
+        self.assertContains(r, "Editar cliente")
+        self.assertContains(r, "app.css?v=")
         gold = {m["chave"]: m["gold"] for m in self.client.get("/api/dashboard/").json()["mosaico"]}
         self.assertEqual(gold, {"MS-0001": True, "MS-0002": False})
 
@@ -111,11 +123,33 @@ class CadastrosTest(TestCase):
     def test_lote_de_cameras(self):
         r = self.client.post(reverse("cad_equipamento_novo"),
                              equip_post(self.cli, nome="Câmera", quantidade="3", senha="s"))
-        self.assertRedirects(r, reverse("cad_equipamentos") + f"?cliente={self.cli.pk}")
+        self.assertRedirects(r, reverse("cad_cliente", args=[self.cli.pk]) + "#equipamentos",
+                             fetch_redirect_response=False)
         cams = list(Equipamento.objects.order_by("ip").values_list("nome", "ip"))
         self.assertEqual(cams, [("Câmera 01", "192.168.1.101"), ("Câmera 02", "192.168.1.102"),
                                 ("Câmera 03", "192.168.1.103")])
         self.assertTrue(all(e.senha == "s" for e in Equipamento.objects.all()))
+
+    def test_lote_de_outras_categorias(self):
+        self.client.post(reverse("cad_equipamento_novo"),
+                         equip_post(self.cli, nome="DVR", categoria="gravador", quantidade="2", ip="10.0.0.20"))
+        self.assertEqual(list(Equipamento.objects.order_by("nome").values_list("nome", "ip")),
+                         [("DVR 01", "10.0.0.20"), ("DVR 02", "10.0.0.21")])
+        r = self.client.post(reverse("cad_equipamento_novo"),
+                             equip_post(self.cli, nome="GW", categoria="gateway", quantidade="2", ip="10.0.0.1"))
+        self.assertContains(r, "Cadastro em lote está disponível para")
+        self.assertEqual(Equipamento.objects.count(), 2)
+
+    def test_equipamento_preso_ao_cliente(self):
+        meu = Agente.objects.create(cliente=self.cli, nome="Meu")
+        Agente.objects.create(cliente=self.outro, nome="Alheio")
+        r = self.client.get(reverse("cad_equipamento_novo") + f"?cliente={self.cli.pk}&categoria=gravador")
+        self.assertContains(r, f'type="hidden" name="cliente" value="{self.cli.pk}"')
+        self.assertContains(r, ">Meu (MS-0001)<")
+        self.assertNotContains(r, "Alheio")
+        self.assertContains(r, '<option value="gravador" selected>')
+        self.assertContains(r, f"Voltar para {self.cli.nome}")
+        self.assertEqual(meu.cliente, self.cli)
 
     def test_agente_de_outro_cliente_recusado(self):
         ag = Agente.objects.create(cliente=self.outro)
@@ -130,6 +164,14 @@ class CadastrosTest(TestCase):
         self.client.post(reverse("cad_equipamento_novo"), dados)
         link = LinkWAN.objects.get()
         self.assertEqual((link.interface, link.download_mbps, link.equipamento.nome), ("ether1", 500, "Router"))
+
+    def test_interfaces_do_roteador_sugeridas(self):
+        gw = Equipamento.objects.create(cliente=self.cli, nome="GW", categoria="gateway", ip="10.0.0.1",
+                                        detalhes={"interfaces": [{"nome": "pppoe-out 1-Vivo", "tipo": "pppoe-out",
+                                                                  "running": True, "comentario": ""}]})
+        r = self.client.get(reverse("cad_equipamento", args=[gw.pk]))
+        self.assertContains(r, 'list="interfaces-roteador"')
+        self.assertContains(r, '<option value="pppoe-out 1-Vivo">')
 
     def test_usuario(self):
         r = self.client.post(reverse("cad_usuario_novo"), {"username": "op", "senha1": "senha-forte-1",
@@ -147,3 +189,23 @@ class CadastrosTest(TestCase):
         self.assertTrue(self.staff.is_staff and self.staff.is_active)
         self.client.post(reverse("cad_usuario_excluir", args=[self.staff.pk]))
         self.assertTrue(User.objects.filter(pk=self.staff.pk).exists())
+
+
+class RelatorioTest(TestCase):
+    def test_host_inacessivel_do_agente_antigo_vira_offline(self):
+        from .models import Status
+        from .servicos import processar_relatorio
+        cli = Cliente.objects.create(nome="Fazenda", chave="5053")
+        ag = Agente.objects.create(cliente=cli)
+        cams = [Equipamento.objects.create(cliente=cli, nome=f"C-{n}", categoria="camera", ip=f"192.168.1.{100 + n}")
+                for n in (29, 30, 31)]
+        # O que o agente 1.0.3 mandava: "respondeu" ao ping (host inacessível), sem tempo de resposta.
+        processar_relatorio(ag, {"resultados": [
+            {"id": cams[0].pk, "online": True, "latencia_ms": None, "perda_pct": 66.0, "servico_ok": False},
+            {"id": cams[1].pk, "online": True, "latencia_ms": None, "perda_pct": 0.0, "servico_ok": False},
+            {"id": cams[2].pk, "online": False, "latencia_ms": None, "perda_pct": 100.0},
+        ]})
+        for c in cams:
+            c.refresh_from_db()
+        self.assertEqual({c.status for c in cams}, {Status.OFFLINE})
+        self.assertEqual({c.perda_pct for c in cams}, {100.0})

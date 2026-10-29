@@ -295,6 +295,10 @@ def processar_relatorio(agente: Agente, dados: dict, ip_origem=None):
         eq = equipamentos.get(r.get("id"))
         if not eq:
             continue
+        if r.get("online") and r.get("latencia_ms") is None:
+            # Agente até 1.0.4 no Windows: "host de destino inacessível" contava como
+            # resposta de ping. Sem nenhum tempo de resposta, o equipamento não respondeu.
+            r.update(online=False, perda_pct=100.0, servico_ok=None)
         eq.ultimo_check = agora
         eq.latencia_ms = r.get("latencia_ms")
         eq.perda_pct = r.get("perda_pct")

@@ -11,7 +11,7 @@
       {% for a in agentes %}
       <li><span class="st st-{% if a.online %}online{% elif a.ultimo_contato %}offline{% else %}desconhecido{% endif %}" aria-hidden="true"></span>
         <a href="{% url 'cad_agente' a.pk %}">{{ a.nome }}</a>
-        <span class="cad-sub">{% if a.online %}Comunicando{% elif a.ultimo_contato %}Sem contato{% else %}Nunca conectou{% endif %}{% if not a.ativo %} · inativo{% endif %}</span>
+        <span class="cad-sub">{% if a.online %}Comunicando{% elif a.ultimo_contato %}Sem contato{% else %}Nunca conectou{% endif %}{% if a.versao %} · versão {{ a.versao }}{% endif %}{% if not a.ativo %} · inativo{% endif %}</span>
         <a class="cad-link cad-n" href="{% url 'cad_agente_pacote' a.pk %}" download>Instalador</a></li>
       {% endfor %}
     </ul>
@@ -19,20 +19,60 @@
     <p class="cad-nota">Nenhum agente. Sem agente, os equipamentos deste cliente não são testados.</p>
     {% endif %}
   </section>
-
-  <section class="painel">
-    <div class="painel-cab"><h2>Equipamentos</h2>
-      <a class="painel-nota cad-link" href="{% url 'cad_equipamento_novo' %}?cliente={{ objeto.pk }}">Novo equipamento</a></div>
-    {% if total_equip %}
-    <ul class="cad-itens">
-      {% for s, rotulo, n in resumo_status %}{% if n %}
-      <li><span class="st st-{{ s }}" aria-hidden="true"></span> {{ rotulo }} <b class="cad-n">{{ n }}</b></li>
-      {% endif %}{% endfor %}
-    </ul>
-    <p><a class="cad-link" href="{% url 'cad_equipamentos' %}?cliente={{ objeto.pk }}">Ver os {{ total_equip }} equipamento{{ total_equip|pluralize }}</a></p>
-    {% else %}
-    <p class="cad-nota">Nenhum equipamento cadastrado.</p>
-    {% endif %}
-  </section>
 </aside>
 {% endif %}{% endblock %}
+
+{% block abaixo %}
+<section class="cad-equip" id="equipamentos" aria-labelledby="t-equip">
+  <div class="cad-equip-cab">
+    <div>
+      <h2 id="t-equip">Equipamentos</h2>
+      <p class="bloco-resumo">{% if objeto %}{{ total_equip }} cadastrado{{ total_equip|pluralize }}{% else %}Depois de criar o cliente, os equipamentos são cadastrados aqui mesmo.{% endif %}</p>
+    </div>
+    {% if objeto %}
+    <div class="cad-equip-acoes">
+      {% if total_equip > 8 %}<label class="cad-busca"><span class="sr">Filtrar equipamentos</span>
+        <input type="search" data-filtrar-equip placeholder="Filtrar por nome, IP ou modelo" autocomplete="off"></label>{% endif %}
+      <a class="cad-botao cad-botao-forte" href="{% url 'cad_equipamento_novo' %}?cliente={{ objeto.pk }}">Novo equipamento</a>
+    </div>
+    {% endif %}
+  </div>
+
+  {% for g in grupos %}
+  <div class="cad-tabela-caixa cad-grupo" data-grupo>
+    <div class="cad-grupo-cab">
+      <h3>{{ g.rotulo }} <span class="cad-n">{{ g.itens|length }}</span></h3>
+      <a class="cad-link" href="{% url 'cad_equipamento_novo' %}?cliente={{ objeto.pk }}&amp;categoria={{ g.categoria }}">Adicionar</a>
+    </div>
+    <table class="cad-tabela">
+      <thead><tr><th scope="col">Equipamento</th><th scope="col">IP / host</th><th scope="col">Status</th>
+        <th scope="col">Última checagem</th><th scope="col"><span class="sr">Ações</span></th></tr></thead>
+      <tbody>
+      {% for e in g.itens %}
+        <tr data-busca="{{ e.nome|lower }} {{ e.ip }} {{ e.modelo|lower }} {{ e.serial|lower }}"{% if not e.ativo %} class="inativo"{% endif %}>
+          <td><a class="cad-abrir" href="{% url 'cad_equipamento' e.pk %}">{{ e.nome }}</a>
+            {% if e.critico %}<span class="etiqueta">Crítico</span>{% endif %}
+            {% if not e.ativo %}<span class="etiqueta">Inativo</span>{% endif %}
+            <span class="cad-sub">{% if e.fabricante != "outro" %}{{ e.get_fabricante_display }} {% endif %}{{ e.modelo }}</span></td>
+          <td><span class="mono">{{ e.ip }}</span></td>
+          <td><span class="st st-{{ e.status }}" aria-hidden="true"></span> {{ e.get_status_display }}</td>
+          <td>{{ e.ultimo_check|date:"d/m/Y H:i"|default:"—" }}</td>
+          <td class="cad-acoes-linha"><a class="cad-link" href="{% url 'cad_equipamento' e.pk %}">Editar</a>
+            <a class="cad-link cad-link-perigo" href="{% url 'cad_equipamento_excluir' e.pk %}">Excluir</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% empty %}
+  {% if objeto %}
+  <div class="cad-equip-vazio">
+    <p>Nenhum equipamento cadastrado ainda.</p>
+    <p class="cad-nota">Câmeras, DVR/NVR, servidores, centrais de alarme, controladoras e leitores faciais podem ser cadastrados em lote: mesmo usuário e senha, com os IPs em sequência.</p>
+    <a class="cad-botao cad-botao-forte" href="{% url 'cad_equipamento_novo' %}?cliente={{ objeto.pk }}">Cadastrar o primeiro equipamento</a>
+  </div>
+  {% endif %}
+  {% endfor %}
+  <p class="cad-nada" data-filtro-vazio hidden>Nenhum equipamento com esse filtro.</p>
+</section>
+{% endblock %}
