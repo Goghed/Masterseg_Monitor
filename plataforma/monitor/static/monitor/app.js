@@ -454,8 +454,10 @@
     if (bps >= 1e6) return `${(bps / 1e6).toFixed(bps >= 1e8 ? 0 : 1)} Mbps`;
     return `${Math.round(bps / 1e3)} kbps`;
   }
-  const ROTULO_LINK = { online: "Online", instavel: "Instável", sem_internet: "Sem internet", offline: "Porta sem sinal" };
-  const ST_LINK = { online: "online", instavel: "degradado", sem_internet: "offline", offline: "offline" };
+  const ROTULO_LINK = { online: "Online", instavel: "Instável", sem_internet: "Sem internet", offline: "Porta sem sinal",
+    nao_encontrada: "Interface não encontrada" };
+  const ST_LINK = { online: "online", instavel: "degradado", sem_internet: "offline", offline: "offline",
+    nao_encontrada: "desconhecido" };
 
   function medidor(rotulo, bps, contratado, uso) {
     const pct = uso != null ? Math.min(100, uso) : null;
@@ -488,7 +490,7 @@
         : `${fmtMs(teste.latencia_ms)}${teste.perda_pct ? `, ${teste.perda_pct}% perda` : ""}`;
       const fonte = l.internet_ping ? `internet por este link` : `gateway do provedor`;
       const info = [
-        l.interface, l.tipo, l.ip,
+        l.pppoe ? `${l.porta} → ${l.pppoe}` : l.interface, l.tipo, l.ip,
         l.taxa_porta_mbps ? `porta ${l.taxa_porta_mbps >= 1000 ? `${l.taxa_porta_mbps / 1000} G` : `${l.taxa_porta_mbps} M`}${l.full_duplex === false ? " half-duplex" : ""}` : "",
       ].filter(Boolean).map((t) => `<span>${esc(t)}</span>`).join("");
       return `<li class="link" data-st="${ST_LINK[st] || "desconhecido"}">
@@ -497,6 +499,7 @@
             <span class="l-papel" data-papel="${papel === "Principal" ? "principal" : papel === "Reserva" ? "reserva" : "fora"}">${papel}</span></p>
           <p class="l-info">${info}</p>
           <p class="l-estado"><b>${ROTULO_LINK[st] || st}</b>${l.status_desde ? ` ${ha(l.status_desde)}` : ""}</p>
+          ${l.motivo ? `<p class="l-motivo">${esc(l.motivo)}</p>` : ""}
         </div>
         <div class="l-trafego">
           ${medidor("Download", l.rx_bps, l.download_mbps, l.uso_down_pct)}

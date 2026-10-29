@@ -199,7 +199,7 @@ class LinkWAN(models.Model):
     detecta os links pelas rotas padrão do roteador."""
     equipamento = models.ForeignKey(Equipamento, on_delete=models.CASCADE, related_name="links")
     interface = models.CharField(
-        max_length=50, help_text="Nome da interface no roteador (ex.: ether1, pppoe-out1).",
+        max_length=50, help_text="Nome da interface no roteador (ex.: ether1, pppoe-out1). Com PPPoE, pode ser a porta ou o PPPoE.",
     )
     nome = models.CharField(max_length=60, blank=True, help_text="Como aparece na tela (ex.: Vivo Fibra).")
     provedor = models.CharField(max_length=60, blank=True)

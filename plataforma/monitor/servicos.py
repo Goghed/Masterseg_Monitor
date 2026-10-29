@@ -207,7 +207,8 @@ def _processar_links(eq, antigos, novos, agora, metricas_link):
         # Queda e volta do link
         if st_novo in LINK_RUIM and st_velho not in LINK_RUIM and st_velho is not None:
             outros = [l for l in online_agora if l.get("interface") != iface]
-            motivo = "a porta perdeu o sinal" if st_novo == "offline" else "a porta está ligada, mas sem internet"
+            motivo = ("a porta perdeu o sinal" if st_novo == "offline"
+                      else link.get("motivo") or "a porta está ligada, mas sem internet")
             if outros:
                 titulo = f"Link {nome} caiu; operando pelo {outros[0].get('nome') or outros[0]['interface']}"
                 sev = Evento.Severidade.AVISO

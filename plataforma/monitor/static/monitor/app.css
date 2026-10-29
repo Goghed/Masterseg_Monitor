@@ -387,6 +387,7 @@ h1, h2, h3, p { margin: 0; }
 .link[data-st="online"] .l-estado b { color: var(--online); font-weight: 650; }
 .link[data-st="degradado"] .l-estado b { color: var(--degradado); font-weight: 650; }
 .link[data-st="offline"] .l-estado b { color: var(--offline); font-weight: 650; }
+.l-motivo { margin-top: 4px; font-size: 12.5px; color: var(--texto-2); line-height: 1.4; }
 .l-trafego { display: grid; gap: 10px; }
 .medidor p { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; color: var(--texto-3); }
 .medidor b { font-stretch: 78%; font-weight: 700; font-size: 17px; color: var(--texto); }

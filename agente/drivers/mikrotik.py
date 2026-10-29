@@ -342,43 +342,70 @@ class MikroTik(Driver):
         ativas = [(inteiro(r.get("distance"), 1), interface_da_rota(r)) for r in rotas if verdadeiro(r.get("active"))]
         principal = min(ativas)[1] if ativas else None
 
+        # PPPoE com o modem em bridge: a porta física (ether1) só dá o sinal; IP,
+        # rota, gateway e tráfego do link estão no cliente PPPoE que roda nela.
+        pppoe_na_porta = {p.get("interface"): nome for nome, p in pppoe.items() if p.get("interface")}
+        por_minuscula = {n.lower(): n for n in interfaces}
+
+        def nome_real(iface):
+            """Cadastro escrito diferente do roteador: "Eth1" acha a ether1."""
+            if iface in interfaces:
+                return iface
+            chave = iface.lower().replace(" ", "")
+            return por_minuscula.get(chave) or por_minuscula.get(re.sub(r"^eth(\d)", r"ether\1", chave))
+
         def um_link(iface):
-            info = interfaces.get(iface, {})
             cad = self.links_cadastrados.get(iface, {})
-            rota = sorted(rotas_por_if.get(iface, []), key=lambda r: inteiro(r.get("distance"), 1))
+            real = nome_real(iface)
+            if not real:
+                return {"interface": iface, "nome": cad.get("nome") or iface, "status": "nao_encontrada",
+                        "running": False, "principal": False,
+                        "motivo": f"O roteador não tem interface chamada {iface}. Confira o nome no cadastro "
+                                  f"(ex.: ether1 ou pppoe-out1)."}
+            if real in pppoe:
+                logica, fisica = real, pppoe[real].get("interface") or real
+            else:
+                logica, fisica = pppoe_na_porta.get(real, real), real
+            info, porta = interfaces.get(logica, {}), interfaces.get(fisica, {})
+            rota = sorted(rotas_por_if.get(logica, []), key=lambda r: inteiro(r.get("distance"), 1))
             rota = rota[0] if rota else {}
-            d, p = dhcp.get(iface, {}), pppoe.get(iface)
+            d, p = dhcp.get(logica) or dhcp.get(fisica) or {}, pppoe.get(logica)
             gateway = (d.get("gateway") or (rota.get("immediate-gw", "").split("%")[0])
                        or rota.get("gateway", "").split(",")[0])
-            if gateway == iface or not gateway:
-                gateway = remotos.get(iface, "")
+            if gateway == logica or not gateway:
+                gateway = remotos.get(logica, "")
+            porta_ok = verdadeiro(porta.get("running")) and not verdadeiro(porta.get("disabled"))
             link = {
                 "interface": iface,
-                "nome": cad.get("nome") or info.get("comment") or iface,
+                "nome": cad.get("nome") or info.get("comment") or porta.get("comment") or iface,
                 "tipo": "PPPoE" if p else "DHCP" if d else "Estático",
-                "ip": enderecos.get(iface) or d.get("address", "").split("/")[0],
+                "ip": enderecos.get(logica) or d.get("address", "").split("/")[0],
                 "gateway": gateway,
                 "distancia": inteiro(rota.get("distance")),
                 "rota_ativa": verdadeiro(rota.get("active")),
-                "principal": iface == principal,
-                "running": verdadeiro(info.get("running")) and not verdadeiro(info.get("disabled")),
-                "quedas_porta": inteiro(info.get("link-downs"), 0),
-                "ultima_subida": info.get("last-link-up-time", ""),
+                "principal": logica == principal,
+                "porta_running": porta_ok,
+                "running": porta_ok and verdadeiro(info.get("running")) and not verdadeiro(info.get("disabled")),
+                "quedas_porta": inteiro(porta.get("link-downs"), 0),
+                "ultima_subida": porta.get("last-link-up-time", ""),
             }
+            if fisica != logica:
+                link["porta"], link["pppoe"] = fisica, logica
             if d:
                 link["dhcp_status"] = d.get("status", "")
             if p:
                 link["pppoe_uptime"] = duracao_legivel(p.get("uptime")) if p.get("uptime") else ""
+                if porta_ok and not link["running"]:
+                    link["motivo"] = f"Porta {fisica} com sinal, mas o PPPoE {logica} não conectou (usuário, senha ou operadora)."
 
             if link["running"]:
                 try:
-                    t = a.comando("interface/monitor-traffic", interface=iface, once="")[0]
+                    t = a.comando("interface/monitor-traffic", interface=logica, once="")[0]
                     link["rx_bps"] = inteiro(t.get("rx-bits-per-second"), 0)
                     link["tx_bps"] = inteiro(t.get("tx-bits-per-second"), 0)
                 except (ErroDriver, IndexError):
                     pass
-                fisica = iface if info.get("type") == "ether" else None
-                if fisica:
+                if porta.get("type") == "ether":
                     try:
                         e = a.comando("interface/ethernet/monitor", numbers=fisica, once="")[0]
                         link["taxa_porta_mbps"] = taxa_mbps(e.get("rate"))
@@ -386,7 +413,7 @@ class MikroTik(Driver):
                     except (ErroDriver, IndexError):
                         pass
                 # Última milha: o gateway do provedor responde por esta interface?
-                link["gateway_ping"] = self._ping(a, gateway, interface=iface) if gateway else None
+                link["gateway_ping"] = self._ping(a, gateway, interface=logica) if gateway else None
                 # Internet de verdade por este link, se houver tabela de rotas cadastrada.
                 if cad.get("tabela_roteamento"):
                     link["internet_ping"] = self._ping(a, cad.get("alvo_ping") or "8.8.8.8",
@@ -401,8 +428,10 @@ class MikroTik(Driver):
 
     @staticmethod
     def _status_link(l):
-        if not l["running"]:
+        if not l["porta_running"]:
             return "offline"
+        if not l["running"]:
+            return "sem_internet"  # porta com sinal, mas o PPPoE não conectou
         testes = [t for t in (l.get("internet_ping"), l.get("gateway_ping")) if t]
         if testes and testes[0]["perda_pct"] >= 100:
             return "sem_internet"
