@@ -42,6 +42,8 @@ PADRAO_POR_TIPO = {
     Evento.Tipo.LINK_SATURADO: (D.AVISAR_CLIENTE, 4,
                                 "Link no limite do contratado: verificar o que está consumindo ou propor upgrade."),
     Evento.Tipo.FAILOVER: (D.AGUARDAR, 4, "Failover funcionou e o local continua conectado; acompanhar o link principal."),
+    Evento.Tipo.ALARME_DISPARO: (D.AVISAR_CLIENTE, 1,
+                                 "Disparo de alarme: conferir as câmeras da área e contatar o cliente ou responsável."),
 }
 INFRA = {"gateway", "servidor", "gravador", "switch"}
 

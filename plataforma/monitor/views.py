@@ -15,7 +15,8 @@ from .models import GRAVIDADE_STATUS, Agente, Cliente, Equipamento, Evento, Metr
 from .servicos import verificar_agentes
 from .triagem import processar_pendentes_ia
 
-TIPOS_PROBLEMA = [t for t in Evento.Tipo.values if t not in Evento.TIPOS_RECUPERACAO]
+TIPOS_PROBLEMA = [t for t in Evento.Tipo.values
+                  if t not in Evento.TIPOS_RECUPERACAO | Evento.TIPOS_INFORMATIVOS]
 
 # Ordem e rótulos das seções da tela do cliente (a "espinha" da topologia).
 SECOES = [
@@ -303,6 +304,8 @@ def api_cliente(request, chave):
     def eq_json(e):
         d = disponib.get(e.pk)
         detalhes = dict(e.detalhes or {})
+        if detalhes.get("canais") and e.canais_em_uso is not None:
+            detalhes["canais"] = detalhes["canais"][:e.canais_em_uso]
         if detalhes.get("links"):
             detalhes["links"] = links_json(e)
         return {

@@ -363,7 +363,7 @@ SECOES_EQUIP = [
     ("Conexão", ["ip", "porta_http", "usar_https", "portas_extras", "driver", "usuario", "senha"], "", ""),
     ("Cadastro em lote", ["quantidade", "numero_inicial"], "lote-cameras",
      "Só para câmeras: cadastra várias de uma vez, com IPs em sequência."),
-    ("Monitoramento", ["depende_de", "critico", "ativo", "ordem"], "", ""),
+    ("Monitoramento", ["depende_de", "canais_em_uso", "critico", "ativo", "ordem"], "", ""),
 ]
 
 

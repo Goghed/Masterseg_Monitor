@@ -159,6 +159,11 @@ class Equipamento(models.Model):
     )
     ativo = models.BooleanField(default=True)
     ordem = models.PositiveIntegerField(default=0)
+    canais_em_uso = models.PositiveSmallIntegerField(
+        "canais em uso", null=True, blank=True,
+        help_text="DVR/NVR e centrais: quantos canais conferir (os primeiros). "
+                  "Vazio = todos; 0 = não mostrar canais.",
+    )
 
     # Estado atual (preenchido pelos relatórios do agente)
     status = models.CharField(max_length=15, choices=Status.choices, default=Status.DESCONHECIDO)
@@ -269,6 +274,8 @@ class Evento(models.Model):
         AGENTE_OFFLINE = "agente_offline", "Agente sem contato"
         AGENTE_ONLINE = "agente_online", "Agente voltou"
         FALHA_GERAL = "falha_geral", "Queda geral no local"
+        ALARME_DISPARO = "alarme_disparo", "Central de alarme disparou"
+        ALARME_ESTADO = "alarme_estado", "Central armada / desarmada"
         OUTRO = "outro", "Outro"
 
     class Severidade(models.TextChoices):
@@ -286,6 +293,8 @@ class Evento(models.Model):
         NENHUMA = "nenhuma", "Sem ação"
 
     TIPOS_RECUPERACAO = {Tipo.EQUIP_ONLINE, Tipo.AGENTE_ONLINE, Tipo.LINK_ONLINE, Tipo.FAILOVER_RETORNO}
+    # Só registro no histórico: não são problema nem pedem decisão.
+    TIPOS_INFORMATIVOS = {Tipo.ALARME_ESTADO}
     # Falhas do próprio equipamento, da mais grave para a mais leve. Viram um
     # incidente só: oscilar entre elas não abre evento novo.
     FALHAS_EQUIPAMENTO = (Tipo.EQUIP_OFFLINE, Tipo.SERVICO_PARADO, Tipo.DEGRADADO)
@@ -333,4 +342,4 @@ class Evento(models.Model):
 
     @property
     def e_problema(self):
-        return self.tipo not in self.TIPOS_RECUPERACAO
+        return self.tipo not in self.TIPOS_RECUPERACAO | self.TIPOS_INFORMATIVOS

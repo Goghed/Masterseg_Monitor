@@ -239,3 +239,42 @@ class RelatorioTest(TestCase):
             c.refresh_from_db()
         self.assertEqual({c.status for c in cams}, {Status.OFFLINE})
         self.assertEqual({c.perda_pct for c in cams}, {100.0})
+
+    def test_central_de_alarme(self):
+        from .models import Evento
+        from .servicos import processar_relatorio
+        cli = Cliente.objects.create(nome="Xapada", chave="4023")
+        ag = Agente.objects.create(cliente=cli)
+        central = Equipamento.objects.create(cliente=cli, nome="Central 01", categoria="alarme", ip="10.0.1.21",
+                                             canais_em_uso=4)
+
+        def relatorio(arming, disparando, zona_estado="normal"):
+            processar_relatorio(ag, {"resultados": [{
+                "id": central.pk, "online": True, "latencia_ms": 1.0, "perda_pct": 0,
+                "detalhes": {
+                    "canais": [{"id": str(i), "online": i <= 2} for i in range(1, 33)],
+                    "alarme": {"particoes": [{"id": "1", "nome": "Perímetro", "estado": arming,
+                                              "disparando": disparando}],
+                               "zonas": [{"id": "0", "numero": 1, "nome": "Portão", "particao": "1",
+                                          "estado": zona_estado}]}}}]})
+
+        relatorio("desarmada", False)
+        relatorio("armada", False)
+        relatorio("armada", True, "disparada")
+        disparo = Evento.objects.get(tipo=Evento.Tipo.ALARME_DISPARO)
+        self.assertIn("zona 1 (Portão)", disparo.detalhe)
+        self.assertIsNone(disparo.resolvido_em)
+        relatorio("desarmada", False)
+        disparo.refresh_from_db()
+        self.assertIsNotNone(disparo.resolvido_em)
+        estados = list(Evento.objects.filter(tipo=Evento.Tipo.ALARME_ESTADO).order_by("criado_em", "pk")
+                       .values_list("titulo", flat=True))
+        self.assertEqual(estados, ["Central 01: Perímetro armada", "Central 01: Perímetro desarmada"])
+        self.assertFalse(Evento.objects.filter(tipo=Evento.Tipo.ALARME_ESTADO).first().e_problema)
+        # Só os 4 canais em uso contam: 2 sem sinal geram evento, os outros 28 não.
+        self.assertEqual(Evento.objects.filter(tipo=Evento.Tipo.CANAL_OFFLINE).count(), 2)
+        staff = User.objects.create_user("s", password="x", is_staff=True)
+        self.client.force_login(staff)
+        item = self.client.get(f"/api/cliente/{cli.chave}/").json()["secoes"][0]["itens"][0]
+        self.assertEqual(len(item["detalhes"]["canais"]), 4)
+        self.assertEqual(item["detalhes"]["alarme"]["particoes"][0]["estado"], "desarmada")

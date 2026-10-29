@@ -426,6 +426,7 @@
       extras.push(`<div><h3>Canais: ${det.canais.length - off} de ${det.canais.length} com sinal</h3>
         <div class="canais">${det.canais.map((c) => `<i data-on="${c.online !== false}" title="Canal ${esc(c.id)} ${esc(c.nome || "")}: ${c.online !== false ? "com sinal" : "sem sinal"}"></i>`).join("")}</div></div>`);
     }
+    const disparando = det.alarme ? blocoAlarme(det.alarme, extras) : false;
     (det.hdds || []).forEach((h) => {
       const ok = (h.status || "ok") === "ok";
       const usado = h.capacidade_gb && h.livre_gb != null ? 100 * (1 - h.livre_gb / h.capacidade_gb) : null;
@@ -434,7 +435,7 @@
         ${usado != null ? `<div class="hd-trilho"><i style="width:${usado.toFixed(0)}%"></i></div>` : ""}</div>`);
     });
 
-    return `<article class="ficha" data-st="${e.status}"${e.incidente && e.incidente.chamar_tecnico ? ' data-tecnico="true"' : ""}>
+    return `<article class="ficha" data-st="${e.status}"${e.incidente && e.incidente.chamar_tecnico ? ' data-tecnico="true"' : ""}${disparando ? ' data-alarme="disparando"' : ""}>
       <div>
         <p class="f-nome"><i class="st st-${e.status}"></i>${esc(e.nome)}${STAFF ? `<a class="f-editar" href="/cadastros/equipamentos/${e.id}/">Editar</a>` : ""}</p>
         <p class="f-modelo">${esc([e.fabricante === "Outro" ? "" : e.fabricante, e.modelo].filter(Boolean).join(" "))}${e.critico ? ", marcado como crítico" : ""}</p>
@@ -455,6 +456,30 @@
     if (bps >= 1e6) return `${(bps / 1e6).toFixed(bps >= 1e8 ? 0 : 1)} Mbps`;
     return `${Math.round(bps / 1e3)} kbps`;
   }
+  // Central de alarme: partições (armada/desarmada/disparo) e zonas fora do normal.
+  const ROTULO_ARMACAO = { armada: "Armada", armada_parcial: "Armada parcial", desarmada: "Desarmada" };
+  const ROTULO_ZONA = { disparada: "disparada", aberta: "aberta", falha: "com falha", tamper: "violada (tamper)",
+    inibida: "inibida", normal: "normal" };
+  function blocoAlarme(al, extras) {
+    const parts = al.particoes || [], zonas = al.zonas || [];
+    const disparando = parts.some((p) => p.disparando) || zonas.some((z) => z.estado === "disparada");
+    const nomeZona = (z) => `Zona ${z.numero}${z.nome ? ` ${z.nome}` : ""}`;
+    const fora = zonas.filter((z) => z.estado !== "normal");
+    const contagem = {};
+    fora.forEach((z) => { contagem[z.estado] = (contagem[z.estado] || 0) + 1; });
+    const resumo = Object.entries(contagem).map(([st, n]) => `${n} ${ROTULO_ZONA[st] || st}`).join(", ");
+    extras.push(`<div class="alarme">
+      ${disparando ? `<p class="al-disparo">Alarme disparado${fora.some((z) => z.estado === "disparada")
+        ? `: ${fora.filter((z) => z.estado === "disparada").map((z) => esc(nomeZona(z))).join(", ")}` : ""}</p>` : ""}
+      ${parts.length ? `<ul class="al-particoes">${parts.map((p) => `<li data-estado="${p.disparando ? "disparando" : esc(p.estado)}">
+        <span>${esc(p.nome)}</span><b>${p.disparando ? "Disparando" : ROTULO_ARMACAO[p.estado] || esc(p.estado)}</b></li>`).join("")}</ul>` : ""}
+      ${zonas.length ? `<h3>Zonas: ${zonas.length} em uso${resumo ? `, ${resumo}` : ", todas normais"}</h3>
+        <div class="zonas">${zonas.map((z) => `<i data-estado="${esc(z.estado)}" title="${esc(nomeZona(z))}: ${ROTULO_ZONA[z.estado] || esc(z.estado)}${z.bateria_fraca ? ", bateria fraca" : ""}"></i>`).join("")}</div>
+        ${fora.length ? `<ul class="al-zonas">${fora.slice(0, 12).map((z) => `<li data-estado="${esc(z.estado)}">${esc(nomeZona(z))}: ${ROTULO_ZONA[z.estado] || esc(z.estado)}</li>`).join("")}${fora.length > 12 ? `<li>e mais ${fora.length - 12}</li>` : ""}</ul>` : ""}` : ""}
+    </div>`);
+    return disparando;
+  }
+
   const ROTULO_LINK = { online: "Online", instavel: "Instável", sem_internet: "Sem internet", offline: "Porta sem sinal",
     nao_encontrada: "Interface não encontrada" };
   const ST_LINK = { online: "online", instavel: "degradado", sem_internet: "offline", offline: "offline",

@@ -73,7 +73,7 @@ class EquipamentoForm(forms.ModelForm):
         model = Equipamento
         fields = ["cliente", "agente", "nome", "categoria", "fabricante", "modelo", "critico",
                   "ativo", "ordem", "ip", "porta_http", "usar_https", "portas_extras", "driver",
-                  "usuario", "depende_de"]
+                  "usuario", "depende_de", "canais_em_uso"]
         widgets = {"agente": SelectPorCliente, "depende_de": SelectPorCliente}
 
     def __init__(self, *args, cliente=None, copiar_de=None, **kwargs):

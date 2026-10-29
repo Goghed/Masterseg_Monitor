@@ -140,11 +140,48 @@ def _transicao_status(eq, novo, agora, servico_ok=None):
             )
 
 
+ROTULO_ARMACAO = {"armada": "armada", "armada_parcial": "armada parcial", "desarmada": "desarmada"}
+
+
+def _comparar_alarme(eq, antigo, novo, agora):
+    """Central de alarme: disparo abre um evento por partição (com as zonas que
+    dispararam) e fecha quando a central sai do disparo; armar/desarmar fica no histórico."""
+    part_ant = {p.get("id"): p for p in antigo.get("particoes", [])}
+    zonas = novo.get("zonas", [])
+    primeira_leitura = not antigo
+    for p in novo.get("particoes", []):
+        pid, ant = p.get("id"), part_ant.get(p.get("id"), {})
+        ref = f"particao:{pid}"
+        nome = p.get("nome") or f"Partição {pid}"
+        if p.get("disparando") and not ant.get("disparando"):
+            disparadas = [z for z in zonas if z.get("estado") == "disparada"
+                          and (not z.get("particao") or z.get("particao") == pid)]
+            lista = ", ".join(f"zona {z.get('numero')}" + (f" ({z['nome']})" if z.get("nome") else "")
+                              for z in disparadas)
+            criar_evento(cliente=eq.cliente, equipamento=eq, tipo=Evento.Tipo.ALARME_DISPARO,
+                         severidade=Evento.Severidade.CRITICO, referencia=ref, criado_em=agora,
+                         titulo=f"Alarme disparou em {eq.nome}: {nome}"[:200],
+                         detalhe=(f"Disparo em {lista}." if lista else "A central não informou a zona.")
+                         + f" Partição {ROTULO_ARMACAO.get(p.get('estado'), p.get('estado'))}.")
+        elif ant.get("disparando") and not p.get("disparando"):
+            Evento.objects.filter(equipamento=eq, referencia=ref, tipo=Evento.Tipo.ALARME_DISPARO,
+                                  resolvido_em__isnull=True).update(resolvido_em=agora)
+        estado, estado_ant = p.get("estado"), ant.get("estado")
+        if (not primeira_leitura and estado_ant and estado != estado_ant
+                and {estado, estado_ant} <= set(ROTULO_ARMACAO)):
+            criar_evento(cliente=eq.cliente, equipamento=eq, tipo=Evento.Tipo.ALARME_ESTADO,
+                         severidade=Evento.Severidade.INFO, referencia=ref, criado_em=agora,
+                         titulo=f"{eq.nome}: {nome} {ROTULO_ARMACAO[estado]}"[:200])
+
+
 def _comparar_detalhes(eq, antigos, novos, agora):
     """Gera eventos a partir de mudanças nos detalhes (canais do NVR, HDs)."""
-    # Canais (câmeras dentro do gravador)
+    # Canais (câmeras dentro do gravador); os que não estão em uso não geram evento.
     canais_ant = {str(c.get("id")): c for c in antigos.get("canais", [])}
-    for canal in novos.get("canais", []):
+    canais = novos.get("canais", [])
+    if eq.canais_em_uso is not None:
+        canais = canais[:eq.canais_em_uso]
+    for canal in canais:
         cid = str(canal.get("id"))
         estava_online = canais_ant.get(cid, {}).get("online", True)
         if estava_online and not canal.get("online", True):
@@ -155,6 +192,9 @@ def _comparar_detalhes(eq, antigos, novos, agora):
                 detalhe=f"Câmera: {canal.get('nome') or 'sem nome'} {canal.get('ip') or ''}".strip(),
                 criado_em=agora,
             )
+
+    if isinstance(novos.get("alarme"), dict):
+        _comparar_alarme(eq, antigos.get("alarme") or {}, novos["alarme"], agora)
 
     # HDs
     hdds_ant = {str(h.get("id")): h for h in antigos.get("hdds", [])}

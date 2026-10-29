@@ -30,7 +30,7 @@ from drivers import DRIVERS, escolher_driver  # noqa: E402
 from drivers.base import ErroDriver, SenhaRecusada  # noqa: E402
 from verificacoes import alcancavel  # noqa: E402
 
-VERSAO = "1.0.7"
+VERSAO = "1.0.8"
 log = logging.getLogger("agente")
 
 
@@ -260,7 +260,7 @@ def testar_equipamento(args):
     """Modo de bancada: testa um equipamento e imprime tudo o que o driver leu."""
     eq = {"id": 0, "nome": args.testar, "ip": args.testar, "porta_http": args.porta,
           "https": args.https, "usuario": args.usuario, "senha": args.senha,
-          "driver": args.driver, "fabricante": args.fabricante, "categoria": "gravador", "portas": [],
+          "driver": args.driver, "fabricante": args.fabricante, "categoria": args.categoria, "portas": [],
           "links": []}
     classe = escolher_driver(eq)
     print(f"Driver: {classe.nome}")
@@ -295,6 +295,7 @@ def main():
     p.add_argument("--testar", metavar="IP", help="testa um equipamento sem a plataforma")
     p.add_argument("--driver", default="auto", choices=["auto", *DRIVERS])
     p.add_argument("--fabricante", default="")
+    p.add_argument("--categoria", default="gravador", help="ex.: alarme, para ler partições e zonas")
     p.add_argument("--usuario", default="")
     p.add_argument("--senha", default="")
     p.add_argument("--porta", type=int, default=80)

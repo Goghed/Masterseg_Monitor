@@ -669,3 +669,26 @@ body[data-page="cadastros"] { color-scheme: dark; }
 .cad-aviso { margin-bottom: 14px; padding: 10px 14px; border-radius: 8px; font-size: 14px;
   background: color-mix(in srgb, var(--acento) 12%, transparent); border: 1px solid color-mix(in srgb, var(--acento) 35%, transparent); }
 .cad-cab-acoes { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* ---------------------------------------------------------------- central de alarme */
+.alarme { display: grid; gap: 10px; }
+.al-disparo { padding: 8px 12px; border-radius: 8px; font-weight: 650; color: #fff;
+  background: var(--offline); animation: pulsar 1.4s ease-in-out infinite; }
+.al-particoes { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; padding: 0; margin: 0; }
+.al-particoes li { display: grid; gap: 2px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--linha);
+  background: var(--painel-2); font-size: 12.5px; color: var(--texto-2); min-width: 130px; }
+.al-particoes b { font-size: 14px; color: var(--texto); }
+.al-particoes li[data-estado="armada"] { border-color: color-mix(in srgb, var(--online) 55%, transparent); }
+.al-particoes li[data-estado="armada"] b { color: var(--online); }
+.al-particoes li[data-estado="armada_parcial"] { border-color: color-mix(in srgb, var(--degradado) 55%, transparent); }
+.al-particoes li[data-estado="armada_parcial"] b { color: var(--degradado); }
+.al-particoes li[data-estado="disparando"] { border-color: var(--offline); background: color-mix(in srgb, var(--offline) 18%, transparent); }
+.al-particoes li[data-estado="disparando"] b { color: var(--offline); }
+.zonas { display: flex; flex-wrap: wrap; gap: 3px; }
+.zonas i { width: 14px; height: 14px; border-radius: 3px; background: var(--online); }
+.zonas i[data-estado="aberta"], .zonas i[data-estado="inibida"] { background: var(--degradado); }
+.zonas i[data-estado="disparada"], .zonas i[data-estado="tamper"] { background: var(--offline); }
+.zonas i[data-estado="falha"] { background: var(--desconhecido, #7d8796); }
+.al-zonas { list-style: none; padding: 0; margin: 0; display: grid; gap: 3px; font-size: 13px; color: var(--texto-2); }
+.al-zonas li[data-estado="disparada"], .al-zonas li[data-estado="tamper"] { color: var(--offline); font-weight: 600; }
+.ficha[data-alarme="disparando"] { border-color: var(--offline); box-shadow: 0 0 0 1px var(--offline); }
