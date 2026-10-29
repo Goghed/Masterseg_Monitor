@@ -155,6 +155,32 @@ class CadastrosTest(TestCase):
         self.assertContains(r, f"Voltar para {self.cli.nome}")
         self.assertEqual(meu.cliente, self.cli)
 
+    def test_duplicar_equipamento(self):
+        ag = Agente.objects.create(cliente=self.cli)
+        dvr = Equipamento(cliente=self.cli, agente=ag, nome="DVR 1", categoria="gravador", fabricante="hikvision",
+                          modelo="DS-7632", ip="10.0.0.11", porta_http=8080, usuario="admin", critico=True)
+        dvr.senha = "segredo"
+        dvr.save()
+        url = reverse("cad_equipamento_novo") + f"?copiar={dvr.pk}"
+        r = self.client.get(url)
+        self.assertContains(r, "Copiando a configuração de")
+        self.assertContains(r, 'value="DS-7632"')
+        self.assertContains(r, 'value="8080"')
+        self.assertContains(r, f'type="hidden" name="cliente" value="{self.cli.pk}"')
+        # Só nome e IP mudam; a senha vem do original.
+        self.client.post(url, equip_post(self.cli, nome="DVR 2", ip="10.0.0.12", categoria="gravador",
+                                         fabricante="hikvision", modelo="DS-7632", porta_http="8080",
+                                         usuario="admin", agente=ag.pk, critico="on"))
+        novo = Equipamento.objects.get(nome="DVR 2")
+        self.assertEqual((novo.ip, novo.modelo, novo.usuario, novo.senha, novo.critico),
+                         ("10.0.0.12", "DS-7632", "admin", "segredo", True))
+
+        gw = Equipamento.objects.create(cliente=self.cli, nome="GW", categoria="gateway", ip="10.0.0.1")
+        LinkWAN.objects.create(equipamento=gw, interface="pppoe-out1", nome="Vivo", download_mbps=400)
+        r = self.client.get(reverse("cad_equipamento_novo") + f"?copiar={gw.pk}")
+        self.assertContains(r, 'name="links-TOTAL_FORMS" value="1"')
+        self.assertContains(r, 'value="pppoe-out1"')
+
     def test_agente_de_outro_cliente_recusado(self):
         ag = Agente.objects.create(cliente=self.outro)
         r = self.client.post(reverse("cad_equipamento_novo"), equip_post(self.cli, agente=ag.pk))

@@ -76,11 +76,14 @@ class EquipamentoForm(forms.ModelForm):
                   "usuario", "depende_de"]
         widgets = {"agente": SelectPorCliente, "depende_de": SelectPorCliente}
 
-    def __init__(self, *args, cliente=None, **kwargs):
+    def __init__(self, *args, cliente=None, copiar_de=None, **kwargs):
         """Com `cliente`, o equipamento fica preso a ele: o campo some e as listas de
         agente e "depende de" mostram só o que é dele."""
         super().__init__(*args, **kwargs)
         self.lote = []
+        self.copiar_de = copiar_de
+        if copiar_de and "senha" in self.fields:
+            self.fields["senha"].help_text = "Em branco: usa a mesma senha do equipamento copiado."
         if "cliente" in self.fields:
             self.fields["cliente"].queryset = Cliente.objects.order_by("chave")
             if cliente:
@@ -153,6 +156,8 @@ class EquipamentoForm(forms.ModelForm):
         obj = super().save(commit=False)
         if self.cleaned_data.get("senha"):
             obj.senha = self.cleaned_data["senha"]
+        elif self.copiar_de and not obj.pk:
+            obj.senha_cifrada = self.copiar_de.senha_cifrada
         if len(self.lote) > 1:
             obj.nome, obj.ip = self.lote[0]
         if commit:

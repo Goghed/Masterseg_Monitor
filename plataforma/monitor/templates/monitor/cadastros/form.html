@@ -15,6 +15,7 @@
     {% csrf_token %}
     {% if form.errors or links.total_error_count %}<p class="erro" role="alert">Confira os campos marcados abaixo.</p>{% endif %}
     {% for e in form.non_field_errors %}<p class="erro">{{ e }}</p>{% endfor %}
+    {% if aviso %}<p class="cad-aviso">{{ aviso }}</p>{% endif %}
 
     {% for s in secoes %}
     <fieldset class="cad-secao {{ s.classe }}">

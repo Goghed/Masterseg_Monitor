@@ -1,6 +1,8 @@
 {% extends "monitor/cadastros/form.html" %}
 {% load static %}
-{% block cab_acoes %}{% if objeto %}<a class="cad-botao" href="{% url 'cliente' objeto.cliente.chave %}">Ver no monitoramento</a>{% endif %}{% endblock %}
+{% block cab_acoes %}{% if objeto %}<div class="cad-cab-acoes">
+  <a class="cad-botao" href="{% url 'cad_equipamento_novo' %}?copiar={{ objeto.pk }}">Duplicar</a>
+  <a class="cad-botao" href="{% url 'cliente' objeto.cliente.chave %}">Ver no monitoramento</a></div>{% endif %}{% endblock %}
 {% block grade_classe %}{% if objeto %} com-lateral{% endif %}{% endblock %}
 
 {% block depois_secoes %}

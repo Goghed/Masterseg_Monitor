@@ -58,6 +58,7 @@
           <td><span class="st st-{{ e.status }}" aria-hidden="true"></span> {{ e.get_status_display }}</td>
           <td>{{ e.ultimo_check|date:"d/m/Y H:i"|default:"—" }}</td>
           <td class="cad-acoes-linha"><a class="cad-link" href="{% url 'cad_equipamento' e.pk %}">Editar</a>
+            <a class="cad-link" href="{% url 'cad_equipamento_novo' %}?copiar={{ e.pk }}" title="Novo equipamento com a mesma configuração">Duplicar</a>
             <a class="cad-link cad-link-perigo" href="{% url 'cad_equipamento_excluir' e.pk %}">Excluir</a></td>
         </tr>
       {% endfor %}

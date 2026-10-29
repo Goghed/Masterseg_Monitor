@@ -14,6 +14,7 @@ from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Count, Q
+from django.forms.models import model_to_dict
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -180,6 +181,12 @@ def _equipamentos_por_categoria(cliente):
         grupos.setdefault(e.categoria, []).append(e)
     return [{"categoria": c, "rotulo": rotulo, "itens": grupos[c]}
             for c, rotulo in Equipamento.Categoria.choices if c in grupos]
+
+
+def _links_iniciais(origem):
+    campos = ["interface", "nome", "provedor", "download_mbps", "upload_mbps",
+              "tabela_roteamento", "alvo_ping", "contato_operadora", "designacao"]
+    return [model_to_dict(l, fields=campos) for l in origem.links.all()]
 
 
 def _url_equipamentos(cliente_id):
@@ -371,12 +378,23 @@ def equipamentos(request):
 @staff
 def equipamento_form(request, pk=None):
     obj = get_object_or_404(Equipamento.objects.select_related("cliente"), pk=pk) if pk else None
-    cliente = obj.cliente if obj else Cliente.objects.filter(pk=_cliente_get(request)).first()
+    copiar = request.GET.get("copiar", "")
+    origem = (Equipamento.objects.select_related("cliente").filter(pk=copiar).first()
+              if not obj and copiar.isdigit() else None)
+    cliente = (obj or origem).cliente if (obj or origem) else Cliente.objects.filter(
+        pk=_cliente_get(request)).first()
     dados = request.POST or None
-    categoria = request.GET.get("categoria")
-    form = EquipamentoForm(dados, instance=obj, cliente=cliente,
-                           initial={"categoria": categoria} if categoria and not obj else None)
-    links = LinkWANFormSet(dados, instance=obj or Equipamento(), prefix="links")
+    if origem:
+        # Mesma configuração do original; nome e IP ficam em branco para preencher.
+        inicial = model_to_dict(origem, fields=[f for f in EquipamentoForm._meta.fields
+                                                if f not in ("nome", "ip")])
+    else:
+        inicial = {"categoria": request.GET.get("categoria")} if request.GET.get("categoria") else {}
+    form = EquipamentoForm(dados, instance=obj, cliente=cliente, initial=inicial or None, copiar_de=origem)
+    links = LinkWANFormSet(dados, instance=obj or Equipamento(), prefix="links",
+                           initial=_links_iniciais(origem) if origem and not dados else None)
+    if origem and not dados:
+        links.extra = len(links.initial_extra or [])
 
     if request.method == "POST" and form.is_valid() and links.is_valid():
         with transaction.atomic():
@@ -390,13 +408,17 @@ def equipamento_form(request, pk=None):
         else:
             messages.success(request, f"Equipamento “{obj_salvo.nome}” salvo.")
         if "_outro" in request.POST:
-            return redirect(reverse("cad_equipamento_novo") + f"?cliente={obj_salvo.cliente_id}")
+            # Com "copiar", o próximo também sai com a mesma configuração.
+            return redirect(reverse("cad_equipamento_novo") + (
+                f"?copiar={origem.pk}" if origem else f"?cliente={obj_salvo.cliente_id}"))
         return redirect(_url_equipamentos(obj_salvo.cliente_id))
 
     definicao = [s for s in SECOES_EQUIP if not (obj and s[2] == "lote-cameras")]
     contexto = {"aba": "clientes", "form": form, "links": links, "objeto": obj, "cliente": cliente,
                 "titulo": obj.nome if obj else "Novo equipamento",
                 "subtitulo": f"{cliente.chave} · {cliente.nome}" if cliente else "",
+                "aviso": (f"Copiando a configuração de “{origem.nome}” ({origem.ip}), inclusive usuário e "
+                          "senha. Informe o nome e o IP do novo equipamento.") if origem else "",
                 "secoes": _secoes(form, definicao), "salvar_outro": True,
                 "tem_links": bool(obj and obj.links.exists()),
                 "interfaces_roteador": (obj.detalhes or {}).get("interfaces") or [] if obj else [],
