@@ -194,6 +194,7 @@
     sem_contato: "Agente: SEM CONTATO (status congelados)", sem_agente: "Agente: não instalado",
   };
   const resumoAgente = (estado) => ROTULO_AGENTE[estado] || "";
+  const MEDALHA = `<svg class="medalha" viewBox="0 0 24 24" role="img" aria-label="Cliente GOLD"><title>Cliente GOLD</title><path d="M6 1h4.5L13 8.5 9.5 9.5z" fill="#3b6fd8"/><path d="M18 1h-4.5L11 8.5l3.5 1z" fill="#2a56b8"/><circle cx="12" cy="15.2" r="7" fill="#f2c230" stroke="#a87b06" stroke-width="1.2"/><path d="M12 11l1 2.6 2.8.2-2.2 1.8.8 2.7L12 16.7l-2.4 1.6.8-2.7-2.2-1.8 2.8-.2z" fill="#fff4c2" stroke="#a87b06" stroke-width=".5"/></svg>`;
 
   function resumoEquipamentos(eq) {
     const linhas = [`Equipamentos: ${eq.online} de ${eq.total} online`];
@@ -229,7 +230,7 @@
           tec.length ? `\nPrecisa de técnico:\n${tec.map((t) => `• ${t}`).join("\n")}` : ""].filter(Boolean).join("\n");
         return `<a class="celula" data-st="${m.status}"${tec.length ? ' data-tecnico="true"' : ""} href="/cliente/${encodeURIComponent(m.chave)}/" title="${esc(titulo)}">
           <span class="c-chave">${esc(m.chave)}</span><span class="c-conta">${conta}</span>
-          <span class="c-nome">${esc(m.nome)}</span></a>`;
+          <span class="c-nome">${esc(m.nome)}${m.gold ? MEDALHA : ""}</span></a>`;
       }).join("") || `<p class="feed-vazio">Nenhum cliente cadastrado. Comece por Cadastros, depois instale o agente.</p>`;
 
       const ind = (valor, rotulo, tom, extra = "") => `<div class="ind" data-tom="${tom || ""}"><div class="ind-valor">${valor}${extra}</div><div class="ind-rotulo">${rotulo}</div></div>`;

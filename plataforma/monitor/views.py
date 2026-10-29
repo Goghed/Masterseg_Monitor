@@ -177,7 +177,7 @@ def api_dashboard(request):
         if links_fora.get(c.pk) and GRAVIDADE_STATUS[status] < GRAVIDADE_STATUS[Status.DEGRADADO]:
             status = Status.DEGRADADO  # um link caiu, mesmo com o reserva segurando
         mosaico.append({
-            "chave": c.chave, "nome": c.nome,
+            "chave": c.chave, "nome": c.nome, "gold": c.gold,
             "status": status, "links_fora": links_fora.get(c.pk, []),
             "offline": eq["offline"], "total": eq["total"], "equipamentos": _equip_json(eq),
             "agente_offline": sem_agente,

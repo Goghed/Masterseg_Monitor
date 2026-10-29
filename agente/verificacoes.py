@@ -25,16 +25,22 @@ def ping(host, tentativas=3, timeout_s=1.0):
     except subprocess.TimeoutExpired:
         return 100.0, None
 
+    if WINDOWS:
+        return _ping_windows(saida, tentativas)
     perda = re.search(r"(\d+(?:[.,]\d+)?)%", saida)
     perda = float(perda.group(1).replace(",", ".")) if perda else 100.0
-    if WINDOWS:
-        # Saída localizada: "Média = 3ms" / "Average = 3ms" é o último "= Nms".
-        medias = re.findall(r"=\s*(\d+)\s*ms", saida)
-        lat = float(medias[-1]) if medias and perda < 100 else None
-    else:
-        m = re.search(r"=\s*[\d.]+/([\d.]+)/", saida)
-        lat = float(m.group(1)) if m else None
+    m = re.search(r"=\s*[\d.]+/([\d.]+)/", saida)
+    lat = float(m.group(1)) if m else None
     return perda, lat
+
+
+def _ping_windows(saida, tentativas):
+    """No Windows, "Host de destino inacessível" vem do roteador e o ping conta
+    como recebido (0% de perda). Só é resposta do equipamento a linha com TTL=."""
+    tempos = [float(t) for linha in saida.splitlines() if "TTL=" in linha.upper()
+              for t in re.findall(r"[=<]\s*(\d+)\s*ms", linha)[:1]]
+    perda = round(100.0 * (tentativas - min(len(tempos), tentativas)) / tentativas, 1)
+    return perda, (sum(tempos) / len(tempos) if tempos else None)
 
 
 def tcp(host, porta, timeout_s=2.0):

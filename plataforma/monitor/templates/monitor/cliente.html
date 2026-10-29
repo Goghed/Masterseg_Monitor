@@ -8,7 +8,7 @@
 <header class="cli-cab">
   <div class="cli-id">
     <p class="cli-chave">{{ cliente.chave }}</p>
-    <h1 class="cli-nome">{{ cliente.nome }}</h1>
+    <h1 class="cli-nome">{{ cliente.nome }}{% if cliente.gold %} {% include "monitor/_medalha.html" %}{% endif %}</h1>
     <p class="cli-meta" id="cli-meta">
       {% if cliente.cidade %}<span>{{ cliente.cidade }}</span>{% endif %}
       {% if cliente.portaria_remota %}<span class="etiqueta">Portaria remota</span>{% endif %}

@@ -116,7 +116,7 @@ def inicio(request):
 SECOES_CLIENTE = [
     ("Identificação", ["chave", "nome", "cidade", "endereco"], "", ""),
     ("Contato", ["contato_nome", "contato_telefone"], "", ""),
-    ("Operação", ["portaria_remota", "ativo", "observacoes"], "", ""),
+    ("Operação", ["gold", "portaria_remota", "ativo", "observacoes"], "", ""),
 ]
 
 
@@ -129,7 +129,7 @@ def clientes(request):
     def linha(c):
         return {"url": reverse("cad_cliente", args=[c.pk]), "inativo": not c.ativo, "celulas": [
             {"t": c.chave, "forte": True},
-            {"t": c.nome, "tag": "Portaria remota" if c.portaria_remota else ""},
+            {"t": c.nome, "tag": " · ".join(t for t, sim in [("GOLD", c.gold), ("Portaria remota", c.portaria_remota)] if sim)},
             {"t": c.cidade or "—"},
             {"t": c.n_agentes, "num": True},
             {"t": c.n_equip, "num": True},

@@ -14,8 +14,8 @@ class AgenteInline(admin.TabularInline):
 
 @admin.register(Cliente)
 class ClienteAdmin(admin.ModelAdmin):
-    list_display = ("chave", "nome", "cidade", "portaria_remota", "ativo")
-    list_filter = ("ativo", "portaria_remota", "cidade")
+    list_display = ("chave", "nome", "cidade", "gold", "portaria_remota", "ativo")
+    list_filter = ("ativo", "gold", "portaria_remota", "cidade")
     search_fields = ("nome", "chave", "cidade")
     inlines = [AgenteInline]
 

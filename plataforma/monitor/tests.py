@@ -56,6 +56,16 @@ class CadastrosTest(TestCase):
         self.client.post(reverse("cad_cliente_excluir", args=[novo.pk]))
         self.assertFalse(Cliente.objects.filter(pk=novo.pk).exists())
 
+    def test_cliente_gold(self):
+        self.client.post(reverse("cad_cliente", args=[self.cli.pk]),
+                         {"chave": "MS-0001", "nome": "Condomínio Azul", "gold": "on", "ativo": "on"})
+        self.cli.refresh_from_db()
+        self.assertTrue(self.cli.gold)
+        self.assertContains(self.client.get(reverse("cliente", args=[self.cli.chave])), 'class="medalha"')
+        self.assertNotContains(self.client.get(reverse("cliente", args=[self.outro.chave])), 'class="medalha"')
+        gold = {m["chave"]: m["gold"] for m in self.client.get("/api/dashboard/").json()["mosaico"]}
+        self.assertEqual(gold, {"MS-0001": True, "MS-0002": False})
+
     def test_agente_ini_e_token(self):
         r = self.client.post(reverse("cad_agente_novo"), {"cliente": self.cli.pk, "nome": "Principal",
                                                           "intervalo_segundos": "30",

@@ -35,6 +35,8 @@ class Cliente(models.Model):
     contato_nome = models.CharField("contato", max_length=100, blank=True)
     contato_telefone = models.CharField("telefone", max_length=30, blank=True)
     portaria_remota = models.BooleanField(default=False)
+    gold = models.BooleanField("cliente GOLD", default=False,
+                               help_text="Mostra a medalha dourada ao lado do nome no painel.")
     observacoes = models.TextField("observações", blank=True)
     ativo = models.BooleanField(default=True)
     criado_em = models.DateTimeField(auto_now_add=True)

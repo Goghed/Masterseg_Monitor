@@ -633,3 +633,8 @@ body[data-page="cadastros"] { color-scheme: dark; }
   .cad-filtro { flex: 1 1 140px; }
   .cad-perigo { margin-left: 0; }
 }
+
+/* ---------------------------------------------------------------- cliente GOLD */
+.medalha { display: inline-block; width: 1.15em; height: 1.15em; vertical-align: -0.18em; margin-left: .3em;
+  flex: none; filter: drop-shadow(0 1px 2px rgb(0 0 0 / .35)); }
+.cli-nome .medalha { width: .8em; height: .8em; vertical-align: -0.04em; }
