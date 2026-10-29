@@ -140,6 +140,10 @@ MONITOR = {
     "AGENTE_TOLERANCIA_INTERVALOS": int(env("MONITOR_AGENTE_TOLERANCIA", "4")),
     # Dias de histórico de métricas mantidos.
     "RETENCAO_METRICAS_DIAS": int(env("MONITOR_RETENCAO_DIAS", "30")),
+    # Equipamento que cai de novo até X min depois de voltar reabre o mesmo incidente.
+    "JANELA_REABERTURA_MIN": int(env("MONITOR_JANELA_REABERTURA_MIN", "30")),
+    # A partir de quantas falhas no mesmo incidente ele é tratado como intermitente.
+    "INTERMITENTE_FALHAS": int(env("MONITOR_INTERMITENTE_FALHAS", "3")),
 }
 
 TRIAGEM = {

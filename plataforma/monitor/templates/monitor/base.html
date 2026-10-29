@@ -29,6 +29,7 @@
         <span class="ao-vivo-ponto" aria-hidden="true"></span><span id="ao-vivo-texto">Conectando</span>
       </span>
       <time class="relogio" id="relogio" aria-live="off"></time>
+      <a class="topo-link" href="{% url 'agentes' %}">Agentes</a>
       {% if user.is_staff %}<a class="topo-link" href="{% url 'admin:index' %}">Cadastros</a>{% endif %}
       <form method="post" action="{% url 'logout' %}">{% csrf_token %}
         <button class="topo-link" type="submit">Sair</button>

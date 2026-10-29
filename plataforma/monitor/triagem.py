@@ -135,7 +135,8 @@ def analisar(evento: Evento, usar_ia=True):
                                "analisado_por", "analisado_em", "aguarda_ia"])
 
     # Com revisão da IA pendente, o acionamento espera a decisão final dela.
-    if dec == D.CHAMAR_TECNICO and settings.TRIAGEM["ACIONAMENTO_AUTOMATICO"] and not evento.aguarda_ia:
+    if (dec == D.CHAMAR_TECNICO and settings.TRIAGEM["ACIONAMENTO_AUTOMATICO"]
+            and not evento.tecnico_acionado_em and not evento.aguarda_ia):
         acionar_tecnico(evento)
     return evento
 
@@ -161,6 +162,14 @@ def _regras_deterministicas(evento):
         ).exclude(pk=evento.pk).exists()
         if geral:
             return (D.AGUARDAR, 5, "Faz parte da queda geral já registrada no local.", "regra")
+    if eq and evento.tipo in Evento.FALHAS_EQUIPAMENTO \
+            and evento.ocorrencias >= settings.MONITOR["INTERMITENTE_FALHAS"]:
+        desde = timezone.localtime(evento.criado_em).strftime("%d/%m às %H:%M")
+        prio = 1 if evento.cliente.portaria_remota or eq.critico else 2
+        return (D.CHAMAR_TECNICO, prio,
+                f"{eq.nome} falhou {evento.ocorrencias} vezes desde {desde}, voltando sozinho entre as "
+                "quedas. Oscilação assim não se resolve remotamente: costuma ser cabo ou conector, "
+                "fonte ou PoE fraco, ou porta do switch. Precisa de técnico no local.", "regra")
     return None
 
 
@@ -182,7 +191,9 @@ def _contexto(evento):
         "cliente": {"nome": cli.nome, "portaria_remota": cli.portaria_remota,
                     "observacoes": cli.observacoes[:500]},
         "evento": {"tipo": evento.tipo, "titulo": evento.titulo, "detalhe": evento.detalhe,
-                   "severidade": evento.severidade, "origem": evento.origem},
+                   "severidade": evento.severidade, "origem": evento.origem,
+                   "aberto_desde": evento.criado_em.isoformat(),
+                   "falhas_neste_incidente": evento.ocorrencias},
         "equipamentos_do_cliente_por_status": resumo,
         "historico_7_dias": historico,
         "reincidencias_24h": _reincidencias(evento),
@@ -212,7 +223,8 @@ Decisões possíveis:
 - nenhuma: não exige ação.
 
 Prioridade de 1 (urgente) a 5 (baixa). Portaria remota sem gateway, servidor ou gravador \
-é sempre urgente. Queda de um link com o reserva assumindo não exige técnico, exige \
+é sempre urgente. Um incidente agrupa as quedas repetidas do mesmo equipamento: \
+"falhas_neste_incidente" acima de 1 indica que ele cai e volta sozinho (intermitente). Queda de um link com o reserva assumindo não exige técnico, exige \
 chamado na operadora; queda sem reserva em portaria remota é urgente. Câmera isolada caindo uma vez costuma ser aguardar. Reincidência \
 indica instabilidade e justifica técnico. Seja conservador: deslocar técnico custa caro.
 

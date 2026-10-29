@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Prepara a plataforma no PythonAnywhere. Rode num "Bash console":
 #   bash ~/masterseg-monitor/plataforma/deploy/pythonanywhere_setup.sh
+# (troque masterseg-monitor pelo nome da pasta do seu clone, se for outro)
 # Pode rodar de novo a cada atualização (git pull): ele só aplica o que mudou.
 set -euo pipefail
 
-PROJETO="$HOME/masterseg-monitor/plataforma"
+# Pasta "plataforma" a partir de onde este script está (funciona com qualquer nome de pasta)
+PROJETO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENV="$HOME/.virtualenvs/masterseg"
 DOMINIO="${USER}.pythonanywhere.com"
 
@@ -59,5 +61,5 @@ echo
 echo "Pronto. Na aba Web do PythonAnywhere, confira:"
 echo "  Virtualenv:      $VENV"
 echo "  Static files:    URL /static/  ->  $PROJETO/staticfiles"
-echo "  WSGI:            conteúdo de deploy/pythonanywhere_wsgi.py com SEU_USUARIO=$USER"
+echo "  WSGI:            conteúdo de deploy/pythonanywhere_wsgi.py com PROJETO = \"$PROJETO\""
 echo "Depois clique em Reload."

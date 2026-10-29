@@ -66,6 +66,7 @@ def config(request):
             "id": agente.pk, "cliente": agente.cliente.nome,
             "intervalo_segundos": agente.intervalo_segundos,
             "falhas_para_offline": agente.falhas_para_offline,
+            "pausado": agente.pausado,
         },
         "equipamentos": [{
             "id": e.pk, "nome": e.nome, "categoria": e.categoria, "fabricante": e.fabricante,
@@ -87,7 +88,21 @@ def relatorio(request):
     except ValueError as exc:
         return JsonResponse({"erro": f"JSON inválido: {exc}"}, status=400)
     n = processar_relatorio(request.agente, dados, _ip_origem(request))
-    return JsonResponse({"ok": True, "processados": n})
+    return JsonResponse({"ok": True, "processados": n, "comando": _entregar_comando(request.agente)})
+
+
+def _entregar_comando(agente):
+    """Entrega o comando pendente uma única vez (o update condicional evita
+    entregar duas vezes se dois relatórios chegarem juntos)."""
+    comando = Agente.objects.filter(pk=agente.pk).values_list("comando", flat=True).first()
+    if not comando:
+        return None
+    entregue = Agente.objects.filter(pk=agente.pk, comando=comando).update(
+        comando="", comando_entregue=comando, comando_entregue_em=timezone.now())
+    if entregue:
+        log.info("Comando %s entregue ao agente %s", comando, agente)
+        return comando
+    return None
 
 
 @csrf_exempt

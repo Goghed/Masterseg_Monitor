@@ -185,11 +185,12 @@ if ($codigoTeste -ne 0) {
 
 # ------------------------------------------------------------------ tarefa agendada
 Passo "Registrando a tarefa agendada '$Tarefa'"
-$argumentos = ($ArgsTarefa + @("--config", "`"$Destino\agente.ini`"", "--log", "`"$Destino\agente.log`"")) -join " "
+$argumentos = ($ArgsTarefa + @("--supervisionado", "--config", "`"$Destino\agente.ini`"", "--log", "`"$Destino\agente.log`"")) -join " "
 $acao = New-ScheduledTaskAction -Execute $Executavel -Argument $argumentos -WorkingDirectory $Destino
 $aoIniciar = New-ScheduledTaskTrigger -AtStartup
-# Gatilho de segurança: a cada 5 min tenta iniciar; se já estiver rodando, ignora.
-$vigia = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 5)
+# Gatilho de segurança: a cada minuto tenta iniciar; se já estiver rodando, ignora.
+# É ele que sobe o agente de volta depois do "Reiniciar" pedido pela plataforma.
+$vigia = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 1)
 $config = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable `
     -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero) `
     -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1)

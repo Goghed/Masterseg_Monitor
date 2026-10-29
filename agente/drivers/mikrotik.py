@@ -98,7 +98,7 @@ class _Rest:
 
     def _tratar(self, r, caminho):
         if r.status_code == 401:
-            raise ErroDriver("usuário ou senha recusados pelo MikroTik (401)")
+            raise SenhaRecusada("usuário ou senha recusados pelo MikroTik (401)")
         if r.status_code >= 400:
             try:
                 msg = r.json().get("detail") or r.json().get("message")

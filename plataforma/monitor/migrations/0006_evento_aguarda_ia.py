@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("monitor", "0003_evento_referencia_alter_equipamento_driver_and_more"),
+        ("monitor", "0005_agente_controle"),
     ]
 
     operations = [

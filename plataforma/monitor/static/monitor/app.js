@@ -63,6 +63,7 @@
     }, 1000);
     document.addEventListener("visibilitychange", () => { if (!document.hidden) ciclo(); });
     ciclo();
+    return ciclo; // para atualizar na hora depois de uma ação
   }
 
   // Sparkline de latência; lacunas (null) viram faixa vermelha de queda.
@@ -95,10 +96,12 @@
   // ------------------------------------------------------------ eventos
   function itemEvento(ev, { mostrarCliente = true } = {}) {
     const st = !ev.problema ? "online" : ev.severidade === "critico" ? "offline" : ev.severidade === "aviso" ? "degradado" : "desconhecido";
-    const quando = hoje(ev.criado_em) ? fmtHora(ev.criado_em) : fmtData(ev.criado_em);
+    const ultima = ev.ultima_ocorrencia || ev.criado_em;
+    const quando = hoje(ultima) ? fmtHora(ultima) : fmtData(ultima);
     const sub = [
       mostrarCliente ? `<a href="/cliente/${encodeURIComponent(ev.cliente.chave)}/">${esc(ev.cliente.chave)} ${esc(ev.cliente.nome)}</a>` : "",
-      `<span>${ha(ev.criado_em)}</span>`,
+      `<span>${ha(ultima)}</span>`,
+      ev.ocorrencias > 1 ? `<span class="ev-vezes">${ev.ocorrencias}× desde ${hoje(ev.criado_em) ? fmtHora(ev.criado_em) : fmtData(ev.criado_em)}</span>` : "",
       ev.problema && ev.resolvido ? "<span>Resolvido</span>" : "",
     ].join("");
     const decisao = ev.problema ? `<span class="decisao" data-d="${esc(ev.decisao)}">${esc(ev.decisao_label)}</span>` : "";
@@ -184,6 +187,22 @@
     tic(); setInterval(tic, 1000);
   }
 
+  // Mesmas frases na visão geral e na página de agentes: agente e equipamentos
+  // são coisas diferentes e cada tela diz de qual está falando.
+  const ROTULO_AGENTE = {
+    comunicando: "Agente: comunicando", pausado: "Agente: pausado (status congelados)",
+    sem_contato: "Agente: SEM CONTATO (status congelados)", sem_agente: "Agente: não instalado",
+  };
+  const resumoAgente = (estado) => ROTULO_AGENTE[estado] || "";
+
+  function resumoEquipamentos(eq) {
+    const linhas = [`Equipamentos: ${eq.online} de ${eq.total} online`];
+    if (eq.offline) linhas.push(`Offline: ${eq.nomes_offline.join(", ")}`);
+    if (eq.degradado) linhas.push(`Degradado: ${eq.nomes_degradado.join(", ")}`);
+    if (eq.desconhecido) linhas.push(`${eq.desconhecido} sem dados ainda`);
+    return linhas;
+  }
+
   // ------------------------------------------------------------ dashboard
   function dashboard() {
     const kpis = $("#kpis"), mosaico = $("#mosaico");
@@ -198,10 +217,17 @@
 
       mosaico.innerHTML = d.mosaico.map((m) => {
         const lf = (m.links_fora || []).length;
-        const conta = m.agente_offline ? "sem agente" : m.offline ? `${m.offline}/${m.total} off` : lf ? `link fora` : `${m.total}`;
-        const titulo = m.agente_offline ? "Agente sem contato"
-          : `${ROTULO_STATUS[m.status]}: ${m.offline} offline de ${m.total}${lf ? `. Link fora: ${m.links_fora.join(", ")}` : ""}`;
-        return `<a class="celula" data-st="${m.status}" href="/cliente/${encodeURIComponent(m.chave)}/" title="${esc(titulo)}">
+        const eq = m.equipamentos || {};
+        const conta = m.agente_offline ? "agente sem contato"
+          : eq.offline ? `${eq.offline} equip. offline`
+          : lf ? "link fora"
+          : eq.degradado ? `${eq.degradado} degradado${eq.degradado > 1 ? "s" : ""}`
+          : `${eq.online} online`;
+        const tec = m.chamar_tecnico || [];
+        const titulo = [resumoAgente(m.agente), resumoEquipamentos(eq).join("\n"),
+          lf ? `Link fora: ${m.links_fora.join(", ")}` : "",
+          tec.length ? `\nPrecisa de técnico:\n${tec.map((t) => `• ${t}`).join("\n")}` : ""].filter(Boolean).join("\n");
+        return `<a class="celula" data-st="${m.status}"${tec.length ? ' data-tecnico="true"' : ""} href="/cliente/${encodeURIComponent(m.chave)}/" title="${esc(titulo)}">
           <span class="c-chave">${esc(m.chave)}</span><span class="c-conta">${conta}</span>
           <span class="c-nome">${esc(m.nome)}</span></a>`;
       }).join("") || `<p class="feed-vazio">Nenhum cliente cadastrado. Comece por Cadastros, depois instale o agente.</p>`;
@@ -260,21 +286,75 @@
   }
 
   // ------------------------------------------------------------ cliente
+  // Barra de saúde: um bloco por equipamento; o mouse (ou o foco) mostra o incidente aberto.
+  let equipTicks = [], tickAtivo = null;
+
+  function conteudoDicaTick(e) {
+    const inc = e.incidente;
+    const cab = `<b>${esc(e.nome)}</b><span class="dt-sub">${esc(e.ip)}, ${ROTULO_STATUS[e.status].toLowerCase()}</span>`;
+    if (!inc) return `${cab}<p>Sem ocorrência aberta.</p>`;
+    return `${cab}
+      <p class="dt-titulo">${esc(inc.titulo)}</p>
+      ${inc.detalhe ? `<p>${esc(inc.detalhe)}</p>` : ""}
+      <p class="dt-decisao" data-d="${esc(inc.decisao)}"><b>${esc(inc.decisao_label)}${inc.prioridade ? `, prioridade ${inc.prioridade}` : ""}.</b>
+        ${esc(inc.justificativa || "Aguardando análise.")}</p>
+      <p class="dt-sub">Aberto ${ha(inc.desde)}${inc.ocorrencias > 1 ? `, ${inc.ocorrencias} falhas` : ""}${inc.analisado_por ? `, ${inc.analisado_por === "ia" ? "análise da IA" : "regra automática"}` : ""}</p>`;
+  }
+
+  function mostrarDicaTick(tick) {
+    const barra = $("#saude-ticks");
+    let dica = $(".dica-tick");
+    if (!tick) { tickAtivo = null; if (dica) dica.remove(); return; }
+    tickAtivo = tick.dataset.i;
+    if (!dica) { dica = document.createElement("div"); dica.className = "dica dica-tick"; dica.setAttribute("role", "tooltip"); barra.parentElement.appendChild(dica); }
+    dica.innerHTML = conteudoDicaTick(equipTicks[tickAtivo]);
+    const caixa = barra.parentElement.getBoundingClientRect(), alvo = tick.getBoundingClientRect();
+    const x = alvo.left - caixa.left + alvo.width / 2 - dica.offsetWidth / 2;
+    dica.style.left = `${Math.max(0, Math.min(x, caixa.width - dica.offsetWidth))}px`;
+    dica.style.top = `${alvo.bottom - caixa.top + 8}px`;
+  }
+
+  // Depois de cada atualização, a dica aberta passa a mostrar os dados novos.
+  function atualizarDicaTick() {
+    if (tickAtivo === null) return;
+    mostrarDicaTick($(`#saude-ticks i[data-i="${tickAtivo}"]`));
+  }
+
+  function iniciarDicaTicks() {
+    const barra = $("#saude-ticks");
+    barra.addEventListener("mouseover", (ev) => { const t = ev.target.closest("i[data-i]"); if (t) mostrarDicaTick(t); });
+    barra.addEventListener("mouseleave", () => mostrarDicaTick(null));
+    barra.addEventListener("focusin", (ev) => mostrarDicaTick(ev.target.closest("i[data-i]")));
+    barra.addEventListener("focusout", () => mostrarDicaTick(null));
+  }
+
   function cliente() {
     const chave = document.body.dataset.chave;
+    iniciarDicaTicks();
     $("#secoes").innerHTML = Array(4).fill('<div class="esqueleto" style="margin-bottom:8px"></div>').join("");
+    // "toggle" não borbulha: escuta na fase de captura.
+    $("#secoes").addEventListener("toggle", (ev) => {
+      const id = ev.target.dataset && ev.target.dataset.id;
+      if (!id || !ev.target.classList.contains("cam-mais")) return;
+      if (ev.target.open) camsAbertas.add(id); else camsAbertas.delete(id);
+    }, true);
 
     aoVivo(`/api/cliente/${encodeURIComponent(chave)}/`, (d) => {
       const ag = d.agentes[0];
       $("#cli-agente").dataset.online = ag ? String(ag.online) : "false";
       $("#cli-agente").innerHTML = ag ? `
         <i class="st st-${ag.online ? "online" : "offline"}"></i>
-        <div><p class="ag-titulo">${ag.online ? "Agente reportando" : "Agente sem contato"}</p>
+        <div><p class="ag-titulo">${!ag.online ? "Agente sem contato" : ag.pausado ? "Agente pausado: status congelados" : "Agente reportando"}
+          <a class="ag-gerenciar" href="/agentes/">Gerenciar</a></p>
         <p class="ag-sub">${esc(ag.hostname || ag.nome)}${ag.ip_local ? `, ${esc(ag.ip_local)}` : ""}. Último contato ${ha(ag.ultimo_contato)}${ag.versao ? `, versão ${esc(ag.versao)}` : ""}</p></div>`
         : `<i class="st st-desconhecido"></i><div><p class="ag-titulo">Nenhum agente cadastrado</p><p class="ag-sub">Crie um em Cadastros para gerar o token.</p></div>`;
 
       const todos = d.secoes.flatMap((s) => s.itens);
-      $("#saude-ticks").innerHTML = todos.map((e) => `<i data-st="${e.status}" title="${esc(e.nome)}: ${ROTULO_STATUS[e.status]}"></i>`).join("");
+      equipTicks = todos;
+      $("#saude-ticks").innerHTML = todos.map((e, i) => `<i data-st="${e.status}" data-i="${i}" tabindex="0"
+        ${e.incidente && e.incidente.chamar_tecnico ? 'data-tecnico="true"' : ""}
+        aria-label="${esc(e.nome)}: ${ROTULO_STATUS[e.status]}${e.incidente ? `. ${esc(e.incidente.titulo)}` : ""}"></i>`).join("");
+      atualizarDicaTick();
       const r = d.resumo;
       const partes = [`<strong>${r.online} de ${r.total}</strong> equipamentos online`];
       if (r.offline) partes.push(`${r.offline} offline`);
@@ -352,7 +432,7 @@
         ${usado != null ? `<div class="hd-trilho"><i style="width:${usado.toFixed(0)}%"></i></div>` : ""}</div>`);
     });
 
-    return `<article class="ficha" data-st="${e.status}">
+    return `<article class="ficha" data-st="${e.status}"${e.incidente && e.incidente.chamar_tecnico ? ' data-tecnico="true"' : ""}>
       <div>
         <p class="f-nome"><i class="st st-${e.status}"></i>${esc(e.nome)}</p>
         <p class="f-modelo">${esc([e.fabricante === "Outro" ? "" : e.fabricante, e.modelo].filter(Boolean).join(" "))}${e.critico ? ", marcado como crítico" : ""}</p>
@@ -437,13 +517,163 @@
       <ul>${linhas}</ul>${nw}</section>`;
   }
 
+  // Detalhes abertos sobrevivem ao redesenho do polling.
+  const camsAbertas = new Set();
+
+  // "2.860.00IB000.0.T,build:2024-10-12" (Dahua) / "V5.7.3 build 220112" (Hikvision)
+  function separarFirmware(fw) {
+    const m = /^(.*?)[,\s]+build[:\s]*(.+)$/i.exec(fw || "");
+    if (!m) return [fw, null];
+    const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(m[2]);
+    return [m[1], iso ? `${iso[3]}/${iso[2]}/${iso[1]}` : m[2]];
+  }
+
   function desenharCamera(e) {
+    const det = e.detalhes || {};
     const lat = e.latencia_ms != null ? `${e.latencia_ms.toFixed(e.latencia_ms < 10 ? 1 : 0)} ms` : "";
-    return `<article class="cam" data-st="${e.status}" title="${esc([e.fabricante, e.modelo].filter(Boolean).join(" "))}">
+    const modelo = [e.fabricante === "Outro" ? "" : e.fabricante, e.modelo].filter(Boolean).join(" ");
+    const [versao, build] = separarFirmware(e.firmware);
+    const pares = [
+      ["Firmware", versao], ["Data do firmware", build],
+      ["Serial", e.serial], ["MAC", e.mac],
+      ["Disponibilidade 24h", e.disponibilidade_24h != null ? `${e.disponibilidade_24h}%` : null],
+      ["Perda de pacotes", e.perda_pct ? `${Math.round(e.perda_pct)}%` : null],
+      ["Porta web", e.porta && e.porta !== 80 ? e.porta : null],
+      ["Depende de", e.depende_de],
+      ["Último teste", e.ultimo_check ? ha(e.ultimo_check) : "aguardando o agente"],
+    ];
+    return `<article class="cam" data-st="${e.status}"${e.incidente && e.incidente.chamar_tecnico ? ' data-tecnico="true"' : ""}>
       <p class="cam-nome"><i class="st st-${e.status}"></i>${esc(e.nome)}</p>
+      <p class="cam-modelo" title="${esc(modelo)}">${esc(modelo) || "Modelo ainda não lido"}</p>
       <p class="cam-sub"><span>${esc(e.ip)}</span><span>${lat}</span></p>
+      ${det.erro_coleta ? `<p class="cam-aviso" title="${esc(det.erro_coleta)}">Leitura da API: ${esc(det.erro_coleta)}</p>` : ""}
       ${e.status === "offline" ? `<p class="cam-off">Sem resposta ${ha(e.status_desde)}</p>` : sparkline(e.sparkline, 180, 26)}
+      <details class="cam-mais" data-id="${e.id}"${camsAbertas.has(String(e.id)) ? " open" : ""}>
+        <summary>Detalhes</summary>${dados(pares)}
+      </details>
     </article>`;
+  }
+
+  // ------------------------------------------------------------ agentes
+  function duracao(iso) {
+    // "há 3 h 12 min" -> "3 h 12 min"
+    return ha(iso).replace(/^há /, "");
+  }
+
+  function situacaoAgente(a) {
+    if (!a.ultimo_contato) return ["desconhecido", "Nunca se comunicou", "Instale o agente e confira o token no agente.ini."];
+    if (!a.online) return ["offline", `Sem contato ${ha(a.ultimo_contato)}`,
+      "Pode ser internet ou energia do local, a máquina desligada ou o agente fechado."];
+    if (a.pausado) return ["degradado", "Pausado", "Comunicando, mas sem testar nenhum equipamento. Os status estão congelados."];
+    return ["online", "Comunicando", `Último contato ${ha(a.ultimo_contato)}.`];
+  }
+
+  function linhaComando(a) {
+    if (a.comando) {
+      return `<p class="ag-cmd" data-pendente="true">
+        <b>${esc(a.comando_label)}</b> pedido${a.comando_pedido_por ? ` por ${esc(a.comando_pedido_por)}` : ""} ${ha(a.comando_pedido_em)}.
+        ${a.online ? `Aguardando o próximo contato do agente (até ${a.intervalo_segundos} s).` : "O agente está sem contato: o comando fica na fila até ele voltar."}
+        ${document.body.dataset.staff ? `<button type="button" class="ag-link" data-cmd="cancelar" data-id="${a.id}">Cancelar</button>` : ""}</p>`;
+    }
+    if (a.comando_entregue) {
+      return `<p class="ag-cmd">Último comando: <b>${esc(a.comando_entregue_label)}</b>, entregue ${ha(a.comando_entregue_em)}.</p>`;
+    }
+    return "";
+  }
+
+  function botoesAgente(a) {
+    if (!document.body.dataset.staff) return "";
+    if (!a.aceita_comandos) {
+      return `<p class="ag-aviso">A versão ${esc(a.versao || "?")} deste agente não recebe comandos.
+        Copie os arquivos novos para a máquina e reinicie o agente uma última vez à mão; a partir da 1.0.3 dá para controlar por aqui.</p>`;
+    }
+    const ocupado = a.comando ? " disabled" : "";
+    return `<div class="ag-botoes">
+      <button type="button" class="ag-botao" data-cmd="recarregar" data-id="${a.id}"${ocupado}
+        title="Busca equipamentos e senhas na hora e lê os detalhes de novo">Recarregar cadastro</button>
+      ${a.pausado
+        ? `<button type="button" class="ag-botao" data-cmd="retomar" data-id="${a.id}"${ocupado}>Retomar testes</button>`
+        : `<button type="button" class="ag-botao" data-cmd="pausar" data-id="${a.id}"${ocupado}
+            title="Para de acessar os equipamentos (ex.: câmera bloqueando por senha errada)">Pausar testes</button>`}
+      <button type="button" class="ag-botao ag-botao-forte" data-cmd="reiniciar" data-id="${a.id}"${ocupado}
+        title="Reinicia o programa do agente na máquina do cliente">Reiniciar agente</button>
+    </div>`;
+  }
+
+  function linhaEquipamentos(a) {
+    const eq = a.equipamentos;
+    if (!eq.offline && !eq.degradado) return "";
+    const partes = [];
+    if (eq.offline) partes.push(`<b class="eq-off">${eq.offline} offline</b>: ${esc(eq.nomes_offline.join(", "))}`);
+    if (eq.degradado) partes.push(`<b class="eq-deg">${eq.degradado} degradado${eq.degradado > 1 ? "s" : ""}</b>: ${esc(eq.nomes_degradado.join(", "))}`);
+    const quem = a.online ? "O agente está ok; o problema é nos equipamentos." : "Status do último contato do agente.";
+    return `<p class="ag-equip">${quem} ${partes.join("; ")}.
+      <a href="/cliente/${encodeURIComponent(a.cliente.chave)}/">Ver cliente</a></p>`;
+  }
+
+  function cartaoAgente(a) {
+    const [st, titulo, sub] = situacaoAgente(a);
+    const eq = a.equipamentos;
+    const pares = [
+      ["Máquina", a.hostname], ["IP local", a.ip_local], ["IP público", a.ip_publico],
+      ["Sistema", a.sistema], ["Versão", a.versao],
+      ["Rodando há", a.iniciado_em && a.online ? duracao(a.iniciado_em) : null],
+      ["Equipamentos online", `${eq.online} de ${eq.total}`], ["Checagem a cada", `${a.intervalo_segundos} s`],
+    ];
+    return `<article class="ag-cartao" data-st="${st}">
+      <div class="ag-id">
+        <p class="ag-cli"><a href="/cliente/${encodeURIComponent(a.cliente.chave)}/"><span>${esc(a.cliente.chave)}</span> ${esc(a.cliente.nome)}</a></p>
+        <p class="ag-nome">${esc(a.nome)}</p>
+        <p class="ag-situacao"><i class="st st-${st}"></i><b>${titulo}</b></p>
+        <p class="ag-sub">${sub}</p>
+        ${linhaEquipamentos(a)}
+      </div>
+      ${dados(pares)}
+      <div class="ag-acoes">${botoesAgente(a)}${linhaComando(a)}</div>
+    </article>`;
+  }
+
+  async function enviarComando(id, comando) {
+    const csrf = $("input[name=csrfmiddlewaretoken]");
+    const corpo = new URLSearchParams({ comando });
+    const resp = await fetch(`/api/agentes/${id}/comando/`, {
+      method: "POST", body: corpo, credentials: "same-origin",
+      headers: { "X-CSRFToken": csrf ? csrf.value : "" },
+    });
+    const dados = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(dados.erro || `HTTP ${resp.status}`);
+  }
+
+  function agentes() {
+    const lista = $("#agentes");
+    lista.innerHTML = Array(2).fill('<div class="esqueleto" style="margin-bottom:8px"></div>').join("");
+    let recarregar = () => {};
+
+    lista.addEventListener("click", async (ev) => {
+      const b = ev.target.closest("button[data-cmd]");
+      if (!b) return;
+      const cmd = b.dataset.cmd;
+      if (cmd === "reiniciar" && !confirm("Reiniciar o agente? Ele fica alguns segundos sem testar os equipamentos.")) return;
+      b.disabled = true;
+      try {
+        await enviarComando(b.dataset.id, cmd);
+        recarregar();
+      } catch (e) {
+        alert(`Não foi possível enviar o comando: ${e.message}`);
+        b.disabled = false;
+      }
+    });
+
+    recarregar = aoVivo("/api/agentes/", (d) => {
+      const sem = d.agentes.filter((a) => !a.online).length;
+      const pausados = d.agentes.filter((a) => a.online && a.pausado).length;
+      const partes = [`<strong>${d.agentes.length - sem} de ${d.agentes.length}</strong> agentes comunicando`];
+      if (sem) partes.push(`${sem} sem contato`);
+      if (pausados) partes.push(`${pausados} pausado${pausados > 1 ? "s" : ""}`);
+      $("#agentes-resumo").innerHTML = partes.join(", ");
+      lista.innerHTML = d.agentes.map(cartaoAgente).join("")
+        || `<p class="feed-vazio">Nenhum agente cadastrado. Crie um em Cadastros, no cliente.</p>`;
+    });
   }
 
   // ------------------------------------------------------------ início
@@ -453,5 +683,6 @@
     const pagina = document.body.dataset.page;
     if (pagina === "dashboard") dashboard();
     if (pagina === "cliente") cliente();
+    if (pagina === "agentes") agentes();
   });
 })();

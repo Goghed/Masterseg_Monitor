@@ -1,19 +1,71 @@
+import ipaddress
+
 from django import forms
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.utils.html import format_html
 
 from .models import Agente, Cliente, Equipamento, Evento, LinkWAN
 
 
 class EquipamentoForm(forms.ModelForm):
+    # autocomplete="new-password": sem isso o navegador preenche a senha salva do
+    # site (de outro equipamento) e ela sobrescreve a deste ao salvar.
     senha = forms.CharField(
-        required=False, widget=forms.PasswordInput(render_value=False),
+        required=False,
+        widget=forms.PasswordInput(render_value=False, attrs={"autocomplete": "new-password"}),
         help_text="Fica cifrada no banco. Deixe em branco para manter a atual.",
+    )
+    quantidade = forms.IntegerField(
+        required=False, min_value=1, max_value=254, initial=1,
+        help_text="Quantas câmeras cadastrar. O IP acima é o da primeira; as seguintes "
+                  "recebem os IPs em sequência (último octeto +1) e a mesma configuração.",
+    )
+    numero_inicial = forms.IntegerField(
+        required=False, min_value=0, initial=1,
+        help_text="Numeração acrescentada ao nome (ex.: “Câmera” vira “Câmera 01”, “Câmera 02”…).",
     )
 
     class Meta:
         model = Equipamento
         fields = "__all__"
+
+    def clean(self):
+        dados = super().clean()
+        self.lote = []
+        qtd = dados.get("quantidade") or 1
+        if self.instance.pk or qtd <= 1:
+            return dados
+        if dados.get("categoria") != Equipamento.Categoria.CAMERA:
+            raise forms.ValidationError("Cadastro em lote está disponível só para câmeras.")
+        try:
+            ip = ipaddress.IPv4Address((dados.get("ip") or "").strip())
+        except ValueError:
+            self.add_error("ip", "Para cadastro em lote informe um IPv4 (ex.: 192.168.1.101).")
+            return dados
+        ultimo_octeto = int(ip) & 0xFF
+        if ultimo_octeto + qtd - 1 > 254:
+            self.add_error("quantidade",
+                           f"A partir de {ip} cabem no máximo {255 - ultimo_octeto} IPs na faixa.")
+            return dados
+
+        ips = [str(ip + i) for i in range(qtd)]
+        cliente = dados.get("cliente")
+        if cliente:
+            ocupados = list(Equipamento.objects.filter(cliente=cliente, ip__in=ips)
+                            .values_list("ip", flat=True))
+            if ocupados:
+                self.add_error("ip", "Já existem equipamentos deste cliente nos IPs: "
+                                     + ", ".join(sorted(ocupados, key=ipaddress.IPv4Address)))
+                return dados
+
+        inicio = dados.get("numero_inicial")
+        inicio = 1 if inicio is None else inicio
+        largura = max(2, len(str(inicio + qtd - 1)))
+        nome = dados.get("nome", "").strip()
+        # "C-" vira "C-01"; "Câmera" vira "Câmera 01".
+        sep = "" if nome[-1:] in "-_." else " "
+        self.lote = [(f"{nome}{sep}{inicio + i:0{largura}d}", ips[i]) for i in range(qtd)]
+        return dados
 
     def save(self, commit=True):
         obj = super().save(commit=False)
@@ -46,6 +98,20 @@ class AgenteAdmin(admin.ModelAdmin):
     search_fields = ("nome", "cliente__nome", "cliente__chave", "hostname")
     readonly_fields = ("token", "config_ini", "hostname", "ip_local", "ip_publico",
                        "versao", "ultimo_contato")
+    actions = ["gerar_novo_token"]
+
+    @admin.action(description="Gerar novo token (o antigo para de funcionar)")
+    def gerar_novo_token(self, request, queryset):
+        from .models import gerar_token
+        for agente in queryset:
+            agente.token = gerar_token()
+            agente.save(update_fields=["token"])
+        self.message_user(
+            request,
+            f"Token novo gerado para {queryset.count()} agente(s). Abra cada um, copie o token "
+            "e atualize o agente.ini no cliente (trocar_url.bat ou instalar.bat).",
+            messages.WARNING,
+        )
 
     @admin.display(description="Arquivo agente.ini")
     def config_ini(self, obj):
@@ -92,6 +158,37 @@ class EquipamentoAdmin(admin.ModelAdmin):
             "firmware", "serial", "mac", "detalhes")}),
     )
 
+    class Media:
+        js = ("monitor/admin_lote.js",)
+
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = super().get_fieldsets(request, obj)
+        if obj is None:
+            lote = ("Cadastro em lote", {"classes": ("lote-cameras",),
+                                         "fields": ("quantidade", "numero_inicial")})
+            fieldsets = (*fieldsets[:2], lote, *fieldsets[2:])
+        return fieldsets
+
+    def save_model(self, request, obj, form, change):
+        lote = getattr(form, "lote", [])
+        if change or len(lote) <= 1:
+            return super().save_model(request, obj, form, change)
+
+        obj.nome, obj.ip = lote[0]
+        super().save_model(request, obj, form, change)
+        for nome, ip in lote[1:]:
+            copia = Equipamento.objects.get(pk=obj.pk)
+            copia.pk = None
+            copia._state.adding = True
+            copia.nome, copia.ip = nome, ip
+            copia.save()
+        self.message_user(
+            request,
+            f"{len(lote)} câmeras cadastradas: {lote[0][0]} ({lote[0][1]}) "
+            f"até {lote[-1][0]} ({lote[-1][1]}).",
+            messages.SUCCESS,
+        )
+
 
 @admin.register(Evento)
 class EventoAdmin(admin.ModelAdmin):
@@ -103,11 +200,13 @@ class EventoAdmin(admin.ModelAdmin):
     actions = ["reanalisar"]
     # A triagem preenche estes campos sozinha: na tela só aparecem para leitura.
     readonly_fields = ("cliente", "equipamento", "tipo", "severidade", "titulo", "detalhe", "origem",
-                       "referencia", "criado_em", "decisao", "prioridade", "justificativa",
+                       "referencia", "criado_em", "ultima_ocorrencia", "ocorrencias",
+                       "decisao", "prioridade", "justificativa",
                        "analisado_por", "analisado_em", "aguarda_ia", "tecnico_acionado_em")
     fieldsets = (
         ("Evento", {"fields": ("cliente", "equipamento", "tipo", "severidade", "titulo", "detalhe",
-                               "origem", "referencia", "criado_em", "resolvido_em")}),
+                               "origem", "referencia", "criado_em", "ultima_ocorrencia",
+                               "ocorrencias", "resolvido_em")}),
         ("Triagem (preenchida pelas regras ou pela IA)", {"fields": (
             "decisao", "prioridade", "justificativa", "analisado_por", "analisado_em",
             "aguarda_ia", "tecnico_acionado_em")}),

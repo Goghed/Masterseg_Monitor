@@ -1,6 +1,6 @@
 # Cole TODO este conteúdo no arquivo WSGI do PythonAnywhere
 # (aba Web > seção "Code" > link "WSGI configuration file"), apagando o que houver lá.
-# Troque SEU_USUARIO pelo seu usuário do PythonAnywhere.
+# PROJETO = caminho da pasta "plataforma" (o setup mostra o caminho certo no final).
 import os
 import sys
 
