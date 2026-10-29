@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Prepara a plataforma no PythonAnywhere. Rode num "Bash console":
-#   bash ~/masterseg-monitor/plataforma/deploy/pythonanywhere_setup.sh
-# (troque masterseg-monitor pelo nome da pasta do seu clone, se for outro)
+#   bash ~/Masterseg_Monitor/plataforma/deploy/pythonanywhere_setup.sh
+# (troque Masterseg_Monitor pelo nome da pasta do seu clone, se for outro)
 # Pode rodar de novo a cada atualização (git pull): ele só aplica o que mudou.
 set -euo pipefail
 

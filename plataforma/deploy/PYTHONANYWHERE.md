@@ -20,8 +20,8 @@ Guarde o `dados.json` e a linha `MONITOR_CHAVE_CRIPTO=...`. Sem essa chave, as s
 Em **Consoles > Bash**:
 
 ```
-git clone https://github.com/SEU_USUARIO_GITHUB/masterseg-monitor.git
-bash ~/masterseg-monitor/plataforma/deploy/pythonanywhere_setup.sh
+git clone https://github.com/Goghed/Masterseg_Monitor.git
+bash ~/Masterseg_Monitor/plataforma/deploy/pythonanywhere_setup.sh
 ```
 
 Repositório privado: o `git clone` pede usuário e um *personal access token* do GitHub no lugar da senha.
@@ -29,7 +29,7 @@ Repositório privado: o `git clone` pede usuário e um *personal access token* d
 ## 3. Ajustar o .env
 
 ```
-nano ~/masterseg-monitor/plataforma/.env
+nano ~/Masterseg_Monitor/plataforma/.env
 ```
 
 - Cole a linha `MONITOR_CHAVE_CRIPTO=...` do passo 1.
@@ -39,10 +39,10 @@ Salve com `Ctrl+O`, Enter, `Ctrl+X`.
 
 ## 4. Importar os dados
 
-Envie o `dados.json` em **Files** para `/home/SEU_USUARIO/masterseg-monitor/plataforma/` e, no Bash:
+Envie o `dados.json` em **Files** para `/home/SEU_USUARIO/Masterseg_Monitor/plataforma/` e, no Bash:
 
 ```
-cd ~/masterseg-monitor/plataforma
+cd ~/Masterseg_Monitor/plataforma
 ~/.virtualenvs/masterseg/bin/python manage.py loaddata dados.json
 ~/.virtualenvs/masterseg/bin/python manage.py popular_demo --apagar
 rm dados.json
@@ -56,9 +56,9 @@ Depois, na página da aplicação:
 
 | Campo | Valor |
 |---|---|
-| Source code | `/home/SEU_USUARIO/masterseg-monitor/plataforma` |
+| Source code | `/home/SEU_USUARIO/Masterseg_Monitor/plataforma` |
 | Virtualenv | `/home/SEU_USUARIO/.virtualenvs/masterseg` |
-| Static files: URL `/static/` | `/home/SEU_USUARIO/masterseg-monitor/plataforma/staticfiles` |
+| Static files: URL `/static/` | `/home/SEU_USUARIO/Masterseg_Monitor/plataforma/staticfiles` |
 | Force HTTPS | ligado |
 
 No link do **WSGI configuration file**, apague tudo e cole o conteúdo de `deploy/pythonanywhere_wsgi.py`, trocando `SEU_USUARIO`. Clique em **Reload**.
@@ -70,7 +70,7 @@ No PC do cliente, `trocar_url.bat` como administrador, com `https://SEU_USUARIO.
 ## Atualizar depois
 
 ```
-cd ~/masterseg-monitor && git pull
+cd ~/Masterseg_Monitor && git pull
 bash plataforma/deploy/pythonanywhere_setup.sh
 ```
 
@@ -81,7 +81,7 @@ e **Reload** na aba Web.
 O PythonAnywhere não executa threads em aplicações web, por isso o `.env` usa `TRIAGEM_MODO=painel`: as regras decidem na hora, e a revisão da IA acontece a cada atualização do painel (um evento por vez). Sem ninguém com o painel aberto, a revisão espera. Em plano pago, crie uma tarefa *always-on* com:
 
 ```
-/home/SEU_USUARIO/.virtualenvs/masterseg/bin/python /home/SEU_USUARIO/masterseg-monitor/plataforma/manage.py processar_triagem --loop
+/home/SEU_USUARIO/.virtualenvs/masterseg/bin/python /home/SEU_USUARIO/Masterseg_Monitor/plataforma/manage.py processar_triagem --loop
 ```
 
 O mesmo vale para a detecção de agente sem contato, que roda junto com o painel e com esse comando.

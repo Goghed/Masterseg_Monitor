@@ -4,7 +4,7 @@
 import os
 import sys
 
-PROJETO = "/home/SEU_USUARIO/masterseg-monitor/plataforma"
+PROJETO = "/home/SEU_USUARIO/Masterseg_Monitor/plataforma"
 if PROJETO not in sys.path:
     sys.path.insert(0, PROJETO)
 
