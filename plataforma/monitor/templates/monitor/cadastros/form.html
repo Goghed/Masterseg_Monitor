@@ -1,0 +1,40 @@
+{% extends "monitor/cadastros/base.html" %}
+{% block titulo %}{{ titulo }}{% endblock %}
+{% block cad %}
+<a class="voltar" href="{{ voltar }}">Voltar para a lista</a>
+<div class="cad-cab">
+  <div>
+    <h1 class="titulo-tela">{{ titulo }}</h1>
+    {% if subtitulo %}<p class="bloco-resumo">{{ subtitulo }}</p>{% endif %}
+  </div>
+  {% block cab_acoes %}{% endblock %}
+</div>
+
+<div class="cad-grade{% block grade_classe %}{% endblock %}">
+  <form class="cad-form" method="post">
+    {% csrf_token %}
+    {% if form.errors or links.total_error_count %}<p class="erro" role="alert">Confira os campos marcados abaixo.</p>{% endif %}
+    {% for e in form.non_field_errors %}<p class="erro">{{ e }}</p>{% endfor %}
+
+    {% for s in secoes %}
+    <fieldset class="cad-secao {{ s.classe }}">
+      <legend>{{ s.titulo }}</legend>
+      {% if s.nota %}<p class="cad-nota">{{ s.nota }}</p>{% endif %}
+      <div class="cad-campos">
+        {% for campo in s.campos %}{% include "monitor/cadastros/_campo.html" %}{% endfor %}
+      </div>
+    </fieldset>
+    {% endfor %}
+
+    {% block depois_secoes %}{% endblock %}
+
+    <div class="cad-acoes">
+      <button class="cad-botao cad-botao-forte" type="submit">Salvar</button>
+      {% if salvar_outro %}<button class="cad-botao" type="submit" name="_outro" value="1">Salvar e cadastrar outro</button>{% endif %}
+      <a class="cad-botao cad-botao-leve" href="{{ voltar }}">Cancelar</a>
+      {% if excluir_url %}<a class="cad-perigo" href="{{ excluir_url }}">Excluir</a>{% endif %}
+    </div>
+  </form>
+  {% block lateral %}{% endblock %}
+</div>
+{% endblock %}

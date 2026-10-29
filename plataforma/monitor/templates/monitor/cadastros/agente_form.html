@@ -1,0 +1,28 @@
+{% extends "monitor/cadastros/form.html" %}
+{% block grade_classe %}{% if objeto %} com-lateral{% endif %}{% endblock %}
+{% block lateral %}{% if objeto %}
+<aside class="cad-lateral">
+  <section class="painel">
+    <div class="painel-cab"><h2>Arquivo agente.ini</h2>
+      <button class="painel-nota cad-link" type="button" data-copiar="agente-ini">Copiar</button></div>
+    <pre class="cad-ini" id="agente-ini">{{ ini }}</pre>
+    <p class="cad-nota">Na instalação, informe essa URL e esse token. Num agente já instalado, troque o
+      conteúdo do <code>agente.ini</code> e reinicie o serviço.</p>
+    <form method="post" action="{% url 'cad_agente_token' objeto.pk %}"
+          data-confirmar="Gerar um token novo? O agente instalado para de funcionar até receber o agente.ini novo.">
+      {% csrf_token %}
+      <button class="cad-botao cad-botao-alerta" type="submit">Gerar novo token</button>
+    </form>
+  </section>
+
+  <section class="painel">
+    <div class="painel-cab"><h2>Situação</h2>
+      <a class="painel-nota cad-link" href="{% url 'agentes' %}">Controle remoto</a></div>
+    <dl class="cad-dados">
+      {% for rotulo, valor in situacao %}<div><dt>{{ rotulo }}</dt><dd>{{ valor }}</dd></div>{% endfor %}
+    </dl>
+    <p><a class="cad-link" href="{% url 'cad_equipamentos' %}?cliente={{ objeto.cliente_id }}">Equipamentos do cliente</a>
+      <span class="cad-sub">{{ n_equip }} ligado{{ n_equip|pluralize }} a este agente</span></p>
+  </section>
+</aside>
+{% endif %}{% endblock %}

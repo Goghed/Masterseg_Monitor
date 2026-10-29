@@ -1,0 +1,22 @@
+{% extends "monitor/base.html" %}
+{% load static %}
+{% block pagina %}cadastros{% endblock %}
+{% block ao_vivo %}{% endblock %}
+{% block conteudo %}
+<nav class="cad-abas" aria-label="Cadastros">
+  <a href="{% url 'cad_clientes' %}"{% if aba == "clientes" %} aria-current="page"{% endif %}>Clientes</a>
+  <a href="{% url 'cad_agentes' %}"{% if aba == "agentes" %} aria-current="page"{% endif %}>Agentes</a>
+  <a href="{% url 'cad_equipamentos' %}"{% if aba == "equipamentos" %} aria-current="page"{% endif %}>Equipamentos</a>
+  <a href="{% url 'cad_usuarios' %}"{% if aba == "usuarios" %} aria-current="page"{% endif %}>Usuários</a>
+  {% if user.is_superuser %}<a class="cad-abas-admin" href="{% url 'admin:index' %}">Admin do Django</a>{% endif %}
+</nav>
+
+{% if messages %}
+<ul class="cad-msgs" role="status">
+  {% for m in messages %}<li data-nivel="{{ m.tags }}">{{ m }}</li>{% endfor %}
+</ul>
+{% endif %}
+
+{% block cad %}{% endblock %}
+{% endblock %}
+{% block scripts %}<script src="{% static 'monitor/cadastros.js' %}" defer></script>{% endblock %}

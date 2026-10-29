@@ -1,0 +1,7 @@
+<div class="cad-link-wan">
+  {% for h in f.hidden_fields %}{{ h }}{% endfor %}
+  {% for e in f.non_field_errors %}<p class="erro">{{ e }}</p>{% endfor %}
+  <div class="cad-campos">
+    {% for campo in f.visible_fields %}{% include "monitor/cadastros/_campo.html" %}{% endfor %}
+  </div>
+</div>

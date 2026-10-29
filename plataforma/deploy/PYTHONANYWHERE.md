@@ -9,9 +9,11 @@ Endereço final: `https://SEU_USUARIO.pythonanywhere.com` (fixo, com HTTPS). É 
 Na pasta `plataforma`, com o venv ativo:
 
 ```
-python manage.py dumpdata auth.user monitor --exclude monitor.metrica --exclude monitor.metricalink --indent 2 -o dados.json
+python -X utf8 manage.py dumpdata auth.user monitor --exclude monitor.metrica --exclude monitor.metricalink --indent 2 -o dados.json
 python manage.py mostrar_chave_cripto
 ```
+
+O `-X utf8` é obrigatório no Windows: sem ele o arquivo sai em cp1252 e o `loaddata` no servidor falha com `UnicodeDecodeError`.
 
 Guarde o `dados.json` e a linha `MONITOR_CHAVE_CRIPTO=...`. Sem essa chave, as senhas dos equipamentos não abrem no servidor e o agente recebe senha vazia (erro 401).
 

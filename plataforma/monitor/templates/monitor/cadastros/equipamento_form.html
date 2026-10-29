@@ -1,0 +1,32 @@
+{% extends "monitor/cadastros/form.html" %}
+{% load static %}
+{% block cab_acoes %}{% if objeto %}<a class="cad-botao" href="{% url 'cliente' objeto.cliente.chave %}">Ver no monitoramento</a>{% endif %}{% endblock %}
+{% block grade_classe %}{% if objeto %} com-lateral{% endif %}{% endblock %}
+
+{% block depois_secoes %}
+<fieldset class="cad-secao secao-links" data-tem-links="{{ tem_links|yesno:'1,' }}">
+  <legend>Links de internet</legend>
+  <p class="cad-nota">Opcional, só para gateway. Sem cadastro, o agente detecta os links pelas rotas padrão do roteador.</p>
+  {{ links.management_form }}
+  {% for e in links.non_form_errors %}<p class="erro">{{ e }}</p>{% endfor %}
+  <div id="links-lista">
+  {% for f in links %}{% include "monitor/cadastros/_link_wan.html" %}{% endfor %}
+  </div>
+  <template id="link-vazio">{% with f=links.empty_form %}{% include "monitor/cadastros/_link_wan.html" %}{% endwith %}</template>
+  <button class="cad-botao" type="button" data-novo-link="links">Adicionar link</button>
+</fieldset>
+{% endblock %}
+
+{% block lateral %}{% if objeto %}
+<aside class="cad-lateral">
+  <section class="painel">
+    <div class="painel-cab"><h2><span class="st st-{{ objeto.status }}" aria-hidden="true"></span> Estado atual</h2>
+      <span class="painel-nota">Preenchido pelo agente</span></div>
+    <dl class="cad-dados">
+      {% for rotulo, valor in estado %}<div><dt>{{ rotulo }}</dt><dd>{{ valor }}</dd></div>{% endfor %}
+    </dl>
+  </section>
+</aside>
+{% endif %}{% endblock %}
+
+{% block scripts %}{{ block.super }}<script src="{% static 'monitor/admin_lote.js' %}" defer></script>{% endblock %}

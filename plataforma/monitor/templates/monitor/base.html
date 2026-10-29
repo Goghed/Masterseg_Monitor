@@ -25,12 +25,12 @@
     </div>
 
     <div class="topo-dir">
-      <span class="ao-vivo" id="ao-vivo" title="Atualização automática">
+      {% block ao_vivo %}<span class="ao-vivo" id="ao-vivo" title="Atualização automática">
         <span class="ao-vivo-ponto" aria-hidden="true"></span><span id="ao-vivo-texto">Conectando</span>
-      </span>
+      </span>{% endblock %}
       <time class="relogio" id="relogio" aria-live="off"></time>
       <a class="topo-link" href="{% url 'agentes' %}">Agentes</a>
-      {% if user.is_staff %}<a class="topo-link" href="{% url 'admin:index' %}">Cadastros</a>{% endif %}
+      {% if user.is_staff %}<a class="topo-link" href="{% url 'cadastros' %}">Cadastros</a>{% endif %}
       <form method="post" action="{% url 'logout' %}">{% csrf_token %}
         <button class="topo-link" type="submit">Sair</button>
       </form>
@@ -42,5 +42,6 @@
   </main>
 
   <script src="{% static 'monitor/app.js' %}" defer></script>
+  {% block scripts %}{% endblock %}
 </body>
 </html>

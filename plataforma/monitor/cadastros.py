@@ -1,0 +1,443 @@
+"""Telas de cadastro (clientes, agentes, equipamentos e usuários), no lugar do
+admin do Django. Só para usuários com "Pode editar cadastros" (is_staff)."""
+from functools import wraps
+
+from django.contrib import messages
+from django.contrib.auth import update_session_auth_hash
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import User
+from django.core.exceptions import PermissionDenied
+from django.core.paginator import Paginator
+from django.db import transaction
+from django.db.models import Count, Q
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
+from django.utils import timezone
+from django.views.decorators.http import require_POST
+
+from .forms import AgenteForm, ClienteForm, EquipamentoForm, LinkWANFormSet, UsuarioForm, criar_lote
+from .models import Agente, Cliente, Equipamento, Status, gerar_token
+
+POR_PAGINA = 50
+
+
+def staff(view):
+    @wraps(view)
+    @login_required
+    def wrapper(request, *args, **kwargs):
+        if not request.user.is_staff:
+            raise PermissionDenied
+        return view(request, *args, **kwargs)
+    return wrapper
+
+
+# ---------------------------------------------------------------- utilidades
+def _data(dt):
+    return timezone.localtime(dt).strftime("%d/%m/%Y %H:%M") if dt else "—"
+
+
+def _filtro(request, nome, rotulo, opcoes):
+    return {"nome": nome, "rotulo": rotulo, "valor": request.GET.get(nome, ""),
+            "opcoes": [(str(v), r) for v, r in opcoes]}
+
+
+def _filtro_clientes(request):
+    return _filtro(request, "cliente", "Cliente",
+                   Cliente.objects.order_by("chave").values_list("pk", "chave"))
+
+
+FILTRO_ATIVO = [("1", "Ativos"), ("0", "Inativos")]
+
+
+def _aplicar_ativo(request, qs, campo="ativo"):
+    valor = request.GET.get("ativo")
+    if valor in ("0", "1"):
+        qs = qs.filter(**{campo: valor == "1"})
+    return qs
+
+
+def _cliente_get(request):
+    valor = request.GET.get("cliente", "")
+    return int(valor) if valor.isdigit() else None
+
+
+def _lista(request, *, aba, titulo, qs, busca, colunas, linha, filtros=(), novo_url, novo_rotulo,
+           busca_dica="Buscar"):
+    q = request.GET.get("q", "").strip()
+    if q:
+        cond = Q()
+        for campo in busca:
+            cond |= Q(**{f"{campo}__icontains": q})
+        qs = qs.filter(cond)
+    pagina = Paginator(qs, POR_PAGINA).get_page(request.GET.get("pagina"))
+    params = request.GET.copy()
+    params.pop("pagina", None)
+    return render(request, "monitor/cadastros/lista.html", {
+        "aba": aba, "titulo": titulo, "colunas": colunas, "linhas": [linha(o) for o in pagina],
+        "pagina": pagina, "params": params.urlencode(), "q": q, "busca_dica": busca_dica,
+        "filtros": filtros, "filtrado": bool(q or any(f["valor"] for f in filtros)),
+        "novo_url": novo_url, "novo_rotulo": novo_rotulo,
+    })
+
+
+def _secoes(form, definicao):
+    return [{"titulo": titulo, "campos": [form[n] for n in nomes], "classe": classe, "nota": nota}
+            for titulo, nomes, classe, nota in definicao]
+
+
+def _excluir(request, *, aba, objeto, tipo, voltar, consequencias=(), alternativa=""):
+    if request.method == "POST":
+        nome = str(objeto)
+        objeto.delete()
+        messages.success(request, f"{tipo.capitalize()} “{nome}” excluído.")
+        return redirect(voltar)
+    return render(request, "monitor/cadastros/excluir.html", {
+        "aba": aba, "objeto": objeto, "tipo": tipo, "voltar": voltar,
+        "consequencias": [c for c in consequencias if c], "alternativa": alternativa,
+    })
+
+
+def _qtd(n, singular, plural):
+    return f"{n} {singular if n == 1 else plural}" if n else ""
+
+
+@staff
+def inicio(request):
+    return redirect("cad_clientes")
+
+
+# ---------------------------------------------------------------- clientes
+SECOES_CLIENTE = [
+    ("Identificação", ["chave", "nome", "cidade", "endereco"], "", ""),
+    ("Contato", ["contato_nome", "contato_telefone"], "", ""),
+    ("Operação", ["portaria_remota", "ativo", "observacoes"], "", ""),
+]
+
+
+@staff
+def clientes(request):
+    qs = _aplicar_ativo(request, Cliente.objects.annotate(
+        n_equip=Count("equipamentos", distinct=True), n_agentes=Count("agentes", distinct=True))
+        .order_by("chave"))
+
+    def linha(c):
+        return {"url": reverse("cad_cliente", args=[c.pk]), "inativo": not c.ativo, "celulas": [
+            {"t": c.chave, "forte": True},
+            {"t": c.nome, "tag": "Portaria remota" if c.portaria_remota else ""},
+            {"t": c.cidade or "—"},
+            {"t": c.n_agentes, "num": True},
+            {"t": c.n_equip, "num": True},
+            {"t": "Ativo" if c.ativo else "Inativo"},
+        ]}
+
+    return _lista(request, aba="clientes", titulo="Clientes", qs=qs, linha=linha,
+                  busca=["nome", "chave", "cidade", "contato_nome"],
+                  busca_dica="Nome, chave, cidade ou contato",
+                  colunas=["Chave", "Nome", "Cidade", "Agentes", "Equipamentos", "Situação"],
+                  filtros=[_filtro(request, "ativo", "Situação", FILTRO_ATIVO)],
+                  novo_url=reverse("cad_cliente_novo"), novo_rotulo="Novo cliente")
+
+
+@staff
+def cliente_form(request, pk=None):
+    obj = get_object_or_404(Cliente, pk=pk) if pk else None
+    form = ClienteForm(request.POST or None, instance=obj)
+    if request.method == "POST" and form.is_valid():
+        obj_salvo = form.save()
+        if obj:
+            messages.success(request, f"Cliente “{obj_salvo}” salvo.")
+            return redirect("cad_clientes")
+        messages.success(request, f"Cliente “{obj_salvo}” criado. Agora cadastre o agente e os equipamentos.")
+        return redirect("cad_cliente", pk=obj_salvo.pk)
+
+    contexto = {"aba": "clientes", "form": form, "objeto": obj,
+                "titulo": obj.nome if obj else "Novo cliente",
+                "secoes": _secoes(form, SECOES_CLIENTE), "voltar": reverse("cad_clientes")}
+    if obj:
+        contexto["excluir_url"] = reverse("cad_cliente_excluir", args=[obj.pk])
+        contexto["agentes"] = obj.agentes.order_by("nome")
+        por_status = dict(obj.equipamentos.filter(ativo=True).values_list("status")
+                          .annotate(n=Count("pk")).values_list("status", "n"))
+        contexto["resumo_status"] = [(s, rotulo, por_status.get(s, 0)) for s, rotulo in Status.choices]
+        contexto["total_equip"] = obj.equipamentos.count()
+    return render(request, "monitor/cadastros/cliente_form.html", contexto)
+
+
+@staff
+def cliente_excluir(request, pk):
+    obj = get_object_or_404(Cliente, pk=pk)
+    return _excluir(
+        request, aba="clientes", objeto=obj, tipo="cliente", voltar=reverse("cad_clientes"),
+        consequencias=[_qtd(obj.agentes.count(), "agente", "agentes"),
+                       _qtd(obj.equipamentos.count(), "equipamento", "equipamentos"),
+                       _qtd(obj.eventos.count(), "evento do histórico", "eventos do histórico")],
+        alternativa="Para só parar de monitorar sem perder o histórico, desmarque “Ativo” no cadastro.",
+    )
+
+
+# ---------------------------------------------------------------- agentes
+SECOES_AGENTE = [
+    ("Agente", ["cliente", "nome", "ativo"], "", ""),
+    ("Checagem", ["intervalo_segundos", "falhas_para_offline"], "", ""),
+]
+
+
+@staff
+def agentes(request):
+    qs = _aplicar_ativo(request, Agente.objects.select_related("cliente")
+                        .order_by("cliente__chave", "nome"))
+    if cid := _cliente_get(request):
+        qs = qs.filter(cliente_id=cid)
+
+    def linha(a):
+        online = a.online
+        return {"url": reverse("cad_agente", args=[a.pk]), "inativo": not a.ativo, "celulas": [
+            {"t": a.nome, "forte": True},
+            {"t": a.cliente.chave, "sub": a.cliente.nome},
+            {"t": a.hostname or "—", "sub": a.ip_local or ""},
+            {"t": a.versao or "—"},
+            {"t": _data(a.ultimo_contato)},
+            {"t": "Comunicando" if online else "Sem contato",
+             "st": Status.ONLINE if online else (Status.OFFLINE if a.ultimo_contato else Status.DESCONHECIDO)},
+        ]}
+
+    return _lista(request, aba="agentes", titulo="Agentes", qs=qs, linha=linha,
+                  busca=["nome", "hostname", "cliente__nome", "cliente__chave"],
+                  busca_dica="Nome, hostname ou cliente",
+                  colunas=["Agente", "Cliente", "Computador", "Versão", "Último contato", "Situação"],
+                  filtros=[_filtro_clientes(request), _filtro(request, "ativo", "Situação", FILTRO_ATIVO)],
+                  novo_url=reverse("cad_agente_novo"), novo_rotulo="Novo agente")
+
+
+def _agente_ini(request, agente):
+    return ("[plataforma]\n"
+            f"url = {request.build_absolute_uri('/').rstrip('/')}\n"
+            f"token = {agente.token}\n"
+            "verificar_tls = sim\n")
+
+
+@staff
+def agente_form(request, pk=None):
+    obj = get_object_or_404(Agente.objects.select_related("cliente"), pk=pk) if pk else None
+    form = AgenteForm(request.POST or None, instance=obj,
+                      initial={"cliente": _cliente_get(request)} if not obj else None)
+    if request.method == "POST" and form.is_valid():
+        obj_salvo = form.save()
+        if obj:
+            messages.success(request, f"Agente “{obj_salvo}” salvo.")
+            return redirect("cad_agentes")
+        messages.success(request, "Agente criado. Copie o agente.ini abaixo para instalar no cliente.")
+        return redirect("cad_agente", pk=obj_salvo.pk)
+
+    contexto = {"aba": "agentes", "form": form, "objeto": obj,
+                "titulo": obj.nome if obj else "Novo agente",
+                "subtitulo": str(obj.cliente) if obj else "",
+                "secoes": _secoes(form, SECOES_AGENTE), "voltar": reverse("cad_agentes")}
+    if obj:
+        contexto["excluir_url"] = reverse("cad_agente_excluir", args=[obj.pk])
+        contexto["ini"] = _agente_ini(request, obj)
+        contexto["situacao"] = [
+            ("Situação", "Comunicando" if obj.online else "Sem contato"),
+            ("Último contato", _data(obj.ultimo_contato)),
+            ("Computador", obj.hostname or "—"),
+            ("Sistema", obj.sistema or "—"),
+            ("IP local", obj.ip_local or "—"),
+            ("IP público", obj.ip_publico or "—"),
+            ("Versão", obj.versao or "—"),
+            ("Em execução desde", _data(obj.iniciado_em)),
+        ]
+        contexto["n_equip"] = obj.equipamentos.count()
+    return render(request, "monitor/cadastros/agente_form.html", contexto)
+
+
+@require_POST
+@staff
+def agente_token(request, pk):
+    obj = get_object_or_404(Agente, pk=pk)
+    obj.token = gerar_token()
+    obj.save(update_fields=["token"])
+    messages.warning(request, "Token novo gerado. O agente instalado para de funcionar até receber "
+                              "o agente.ini novo (copie o bloco abaixo).")
+    return redirect("cad_agente", pk=pk)
+
+
+@staff
+def agente_excluir(request, pk):
+    obj = get_object_or_404(Agente, pk=pk)
+    n = obj.equipamentos.count()
+    return _excluir(
+        request, aba="agentes", objeto=obj, tipo="agente", voltar=reverse("cad_agentes"),
+        consequencias=["O agente instalado no cliente deixa de ser aceito pela plataforma.",
+                       f"{_qtd(n, 'equipamento', 'equipamentos')} passam para o primeiro agente do cliente."
+                       if n else ""],
+        alternativa="Para só suspender, desmarque “Ativo” no cadastro do agente.",
+    )
+
+
+# ---------------------------------------------------------------- equipamentos
+SECOES_EQUIP = [
+    ("Identificação", ["cliente", "agente", "nome", "categoria", "fabricante", "modelo"], "", ""),
+    ("Conexão", ["ip", "porta_http", "usar_https", "portas_extras", "driver", "usuario", "senha"], "", ""),
+    ("Cadastro em lote", ["quantidade", "numero_inicial"], "lote-cameras",
+     "Só para câmeras: cadastra várias de uma vez, com IPs em sequência."),
+    ("Monitoramento", ["depende_de", "critico", "ativo", "ordem"], "", ""),
+]
+
+
+@staff
+def equipamentos(request):
+    qs = _aplicar_ativo(request, Equipamento.objects.select_related("cliente")
+                        .order_by("cliente__chave", "ordem", "nome"))
+    if cid := _cliente_get(request):
+        qs = qs.filter(cliente_id=cid)
+    if cat := request.GET.get("categoria"):
+        qs = qs.filter(categoria=cat)
+    if st := request.GET.get("status"):
+        qs = qs.filter(status=st)
+
+    def linha(e):
+        return {"url": reverse("cad_equipamento", args=[e.pk]), "inativo": not e.ativo, "celulas": [
+            {"t": e.nome, "forte": True, "sub": " ".join(filter(None, [e.get_fabricante_display()
+                                                                      if e.fabricante != "outro" else "",
+                                                                      e.modelo]))},
+            {"t": e.cliente.chave, "sub": e.cliente.nome},
+            {"t": e.get_categoria_display(), "tag": "Crítico" if e.critico else ""},
+            {"t": e.ip, "mono": True},
+            {"t": e.get_status_display(), "st": e.status},
+            {"t": _data(e.ultimo_check)},
+        ]}
+
+    novo = reverse("cad_equipamento_novo") + (f"?cliente={cid}" if cid else "")
+    return _lista(request, aba="equipamentos", titulo="Equipamentos", qs=qs, linha=linha,
+                  busca=["nome", "ip", "modelo", "serial", "cliente__nome", "cliente__chave"],
+                  busca_dica="Nome, IP, modelo, serial ou cliente",
+                  colunas=["Equipamento", "Cliente", "Categoria", "IP / host", "Status", "Última checagem"],
+                  filtros=[_filtro_clientes(request),
+                           _filtro(request, "categoria", "Categoria", Equipamento.Categoria.choices),
+                           _filtro(request, "status", "Status", Status.choices),
+                           _filtro(request, "ativo", "Situação", FILTRO_ATIVO)],
+                  novo_url=novo, novo_rotulo="Novo equipamento")
+
+
+@staff
+def equipamento_form(request, pk=None):
+    obj = get_object_or_404(Equipamento.objects.select_related("cliente"), pk=pk) if pk else None
+    dados = request.POST or None
+    form = EquipamentoForm(dados, instance=obj,
+                           initial={"cliente": _cliente_get(request)} if not obj else None)
+    links = LinkWANFormSet(dados, instance=obj or Equipamento(), prefix="links")
+
+    if request.method == "POST" and form.is_valid() and links.is_valid():
+        with transaction.atomic():
+            obj_salvo = form.save()
+            links.instance = obj_salvo
+            links.save()
+            criar_lote(obj_salvo, form.lote)
+        if len(form.lote) > 1:
+            messages.success(request, f"{len(form.lote)} câmeras cadastradas: {form.lote[0][0]} "
+                                      f"({form.lote[0][1]}) até {form.lote[-1][0]} ({form.lote[-1][1]}).")
+        else:
+            messages.success(request, f"Equipamento “{obj_salvo.nome}” salvo.")
+        if "_outro" in request.POST:
+            return redirect(reverse("cad_equipamento_novo") + f"?cliente={obj_salvo.cliente_id}")
+        return redirect(reverse("cad_equipamentos") + f"?cliente={obj_salvo.cliente_id}")
+
+    definicao = [s for s in SECOES_EQUIP if not (obj and s[2] == "lote-cameras")]
+    contexto = {"aba": "equipamentos", "form": form, "links": links, "objeto": obj,
+                "titulo": obj.nome if obj else "Novo equipamento",
+                "subtitulo": str(obj.cliente) if obj else "",
+                "secoes": _secoes(form, definicao), "salvar_outro": True,
+                "tem_links": bool(obj and obj.links.exists()),
+                "voltar": reverse("cad_equipamentos") + (f"?cliente={obj.cliente_id}" if obj else "")}
+    if obj:
+        contexto["excluir_url"] = reverse("cad_equipamento_excluir", args=[obj.pk])
+        contexto["estado"] = [
+            ("Status", obj.get_status_display()),
+            ("Desde", _data(obj.status_desde)),
+            ("Última checagem", _data(obj.ultimo_check)),
+            ("Latência", f"{obj.latencia_ms:.0f} ms" if obj.latencia_ms is not None else "—"),
+            ("Perda", f"{obj.perda_pct:.0f}%" if obj.perda_pct is not None else "—"),
+            ("Firmware", obj.firmware or "—"),
+            ("Serial", obj.serial or "—"),
+            ("MAC", obj.mac or "—"),
+        ]
+    return render(request, "monitor/cadastros/equipamento_form.html", contexto)
+
+
+@staff
+def equipamento_excluir(request, pk):
+    obj = get_object_or_404(Equipamento, pk=pk)
+    n = obj.dependentes.count()
+    return _excluir(
+        request, aba="equipamentos", objeto=obj, tipo="equipamento",
+        voltar=reverse("cad_equipamentos") + f"?cliente={obj.cliente_id}",
+        consequencias=["O histórico de medições dele é apagado; os eventos continuam no histórico do cliente.",
+                       f"{_qtd(n, 'equipamento depende', 'equipamentos dependem')} dele e "
+                       f"{'fica' if n == 1 else 'ficam'} sem dependência." if n else ""],
+        alternativa="Para só parar de monitorar, desmarque “Ativo” no cadastro.",
+    )
+
+
+# ---------------------------------------------------------------- usuários
+SECOES_USUARIO = [
+    ("Acesso", ["username", "senha1", "senha2"], "", ""),
+    ("Dados", ["first_name", "last_name", "email"], "", ""),
+    ("Permissões", ["is_staff", "is_active"], "", ""),
+]
+
+
+@staff
+def usuarios(request):
+    qs = _aplicar_ativo(request, User.objects.order_by("username"), campo="is_active")
+
+    def linha(u):
+        return {"url": reverse("cad_usuario", args=[u.pk]), "inativo": not u.is_active, "celulas": [
+            {"t": u.username, "forte": True},
+            {"t": u.get_full_name() or "—"},
+            {"t": u.email or "—"},
+            {"t": "Edita cadastros" if u.is_staff else "Só monitoramento"},
+            {"t": _data(u.last_login)},
+            {"t": "Ativo" if u.is_active else "Bloqueado"},
+        ]}
+
+    return _lista(request, aba="usuarios", titulo="Usuários", qs=qs, linha=linha,
+                  busca=["username", "first_name", "last_name", "email"],
+                  busca_dica="Usuário, nome ou e-mail",
+                  colunas=["Usuário", "Nome", "E-mail", "Acesso", "Último acesso", "Situação"],
+                  filtros=[_filtro(request, "ativo", "Situação", FILTRO_ATIVO)],
+                  novo_url=reverse("cad_usuario_novo"), novo_rotulo="Novo usuário")
+
+
+@staff
+def usuario_form(request, pk=None):
+    obj = get_object_or_404(User, pk=pk) if pk else None
+    form = UsuarioForm(request.POST or None, instance=obj)
+    proprio = obj is not None and obj.pk == request.user.pk
+    if proprio:
+        # Ninguém tira o próprio acesso por engano.
+        for campo in ("is_staff", "is_active"):
+            form.fields[campo].disabled = True
+            form.fields[campo].help_text = "Outro usuário com acesso aos cadastros pode alterar isto."
+    if request.method == "POST" and form.is_valid():
+        usuario = form.save()
+        if proprio and form.cleaned_data.get("senha1"):
+            update_session_auth_hash(request, usuario)  # não derruba a própria sessão
+        messages.success(request, f"Usuário “{usuario.username}” salvo.")
+        return redirect("cad_usuarios")
+
+    contexto = {"aba": "usuarios", "form": form, "objeto": obj,
+                "titulo": obj.username if obj else "Novo usuário",
+                "secoes": _secoes(form, SECOES_USUARIO), "voltar": reverse("cad_usuarios")}
+    if obj and not proprio:
+        contexto["excluir_url"] = reverse("cad_usuario_excluir", args=[obj.pk])
+    return render(request, "monitor/cadastros/form.html", contexto)
+
+
+@staff
+def usuario_excluir(request, pk):
+    obj = get_object_or_404(User, pk=pk)
+    if obj.pk == request.user.pk:
+        messages.error(request, "Você não pode excluir o próprio usuário.")
+        return redirect("cad_usuarios")
+    return _excluir(request, aba="usuarios", objeto=obj, tipo="usuário", voltar=reverse("cad_usuarios"),
+                    alternativa="Para só bloquear o acesso, desmarque “Ativo” no cadastro.")

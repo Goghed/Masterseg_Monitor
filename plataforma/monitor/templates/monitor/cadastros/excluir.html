@@ -1,0 +1,19 @@
+{% extends "monitor/cadastros/base.html" %}
+{% block titulo %}Excluir {{ tipo }}{% endblock %}
+{% block cad %}
+<a class="voltar" href="{{ voltar }}">Voltar</a>
+<section class="painel cad-excluir">
+  <h1 class="titulo-tela">Excluir {{ tipo }}?</h1>
+  <p class="cad-excluir-nome">{{ objeto }}</p>
+  {% if consequencias %}
+  <p>Isto não pode ser desfeito:</p>
+  <ul>{% for c in consequencias %}<li>{{ c }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% if alternativa %}<p class="cad-nota">{{ alternativa }}</p>{% endif %}
+  <form method="post" class="cad-acoes">
+    {% csrf_token %}
+    <button class="cad-botao cad-botao-perigo" type="submit">Excluir definitivamente</button>
+    <a class="cad-botao cad-botao-leve" href="{{ voltar }}">Cancelar</a>
+  </form>
+</section>
+{% endblock %}

@@ -13,6 +13,7 @@
       {% if cliente.cidade %}<span>{{ cliente.cidade }}</span>{% endif %}
       {% if cliente.portaria_remota %}<span class="etiqueta">Portaria remota</span>{% endif %}
       {% if cliente.contato_nome %}<span>{{ cliente.contato_nome }}{% if cliente.contato_telefone %}, {{ cliente.contato_telefone }}{% endif %}</span>{% endif %}
+      {% if user.is_staff %}<a class="ag-gerenciar" href="{% url 'cad_cliente' cliente.pk %}">Editar cadastro</a>{% endif %}
     </p>
   </div>
   <div class="cli-agente" id="cli-agente" aria-live="polite"></div>

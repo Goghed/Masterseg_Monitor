@@ -1,0 +1,37 @@
+{% extends "monitor/cadastros/form.html" %}
+{% block cab_acoes %}{% if objeto %}<a class="cad-botao" href="{% url 'cliente' objeto.chave %}">Ver no monitoramento</a>{% endif %}{% endblock %}
+{% block grade_classe %}{% if objeto %} com-lateral{% endif %}{% endblock %}
+{% block lateral %}{% if objeto %}
+<aside class="cad-lateral">
+  <section class="painel">
+    <div class="painel-cab"><h2>Agentes</h2>
+      <a class="painel-nota cad-link" href="{% url 'cad_agente_novo' %}?cliente={{ objeto.pk }}">Novo agente</a></div>
+    {% if agentes %}
+    <ul class="cad-itens">
+      {% for a in agentes %}
+      <li><span class="st st-{% if a.online %}online{% elif a.ultimo_contato %}offline{% else %}desconhecido{% endif %}" aria-hidden="true"></span>
+        <a href="{% url 'cad_agente' a.pk %}">{{ a.nome }}</a>
+        <span class="cad-sub">{% if a.online %}Comunicando{% elif a.ultimo_contato %}Sem contato{% else %}Nunca conectou{% endif %}{% if not a.ativo %} · inativo{% endif %}</span></li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="cad-nota">Nenhum agente. Sem agente, os equipamentos deste cliente não são testados.</p>
+    {% endif %}
+  </section>
+
+  <section class="painel">
+    <div class="painel-cab"><h2>Equipamentos</h2>
+      <a class="painel-nota cad-link" href="{% url 'cad_equipamento_novo' %}?cliente={{ objeto.pk }}">Novo equipamento</a></div>
+    {% if total_equip %}
+    <ul class="cad-itens">
+      {% for s, rotulo, n in resumo_status %}{% if n %}
+      <li><span class="st st-{{ s }}" aria-hidden="true"></span> {{ rotulo }} <b class="cad-n">{{ n }}</b></li>
+      {% endif %}{% endfor %}
+    </ul>
+    <p><a class="cad-link" href="{% url 'cad_equipamentos' %}?cliente={{ objeto.pk }}">Ver os {{ total_equip }} equipamento{{ total_equip|pluralize }}</a></p>
+    {% else %}
+    <p class="cad-nota">Nenhum equipamento cadastrado.</p>
+    {% endif %}
+  </section>
+</aside>
+{% endif %}{% endblock %}
