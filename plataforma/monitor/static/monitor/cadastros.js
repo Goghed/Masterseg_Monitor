@@ -5,6 +5,15 @@ document.addEventListener("DOMContentLoaded", () => {
     sel.addEventListener("change", () => sel.form.requestSubmit());
   });
 
+  // Clicar em qualquer ponto da linha abre o cadastro (os links continuam funcionando normal).
+  document.querySelectorAll("tr[data-href]").forEach((tr) => {
+    tr.addEventListener("click", (e) => {
+      if (e.target.closest("a, button, input, select") || getSelection().toString()) return;
+      if (e.ctrlKey || e.metaKey) window.open(tr.dataset.href, "_blank");
+      else location.href = tr.dataset.href;
+    });
+  });
+
   document.querySelectorAll("form[data-confirmar]").forEach((form) => {
     form.addEventListener("submit", (e) => {
       if (!confirm(form.dataset.confirmar)) e.preventDefault();

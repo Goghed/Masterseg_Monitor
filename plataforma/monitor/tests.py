@@ -51,6 +51,10 @@ class CadastrosTest(TestCase):
         self.assertEqual(self.client.get(reverse("cad_clientes")).status_code, 302)
 
     def test_cliente_criar_editar_excluir(self):
+        lista = self.client.get(reverse("cad_clientes"))
+        url = reverse("cad_cliente", args=[self.cli.pk])
+        self.assertContains(lista, f'data-href="{url}"')
+        self.assertContains(lista, f'href="{url}">Condomínio Azul</a>', html=False)
         r = self.client.post(reverse("cad_cliente_novo"), {"chave": "MS-0003", "nome": "Novo", "ativo": "on"})
         novo = Cliente.objects.get(chave="MS-0003")
         self.assertRedirects(r, reverse("cad_cliente", args=[novo.pk]) + "#equipamentos",

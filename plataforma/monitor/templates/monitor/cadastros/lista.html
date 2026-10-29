@@ -32,11 +32,11 @@
     <thead><tr>{% for c in colunas %}<th scope="col">{{ c }}</th>{% endfor %}</tr></thead>
     <tbody>
     {% for l in linhas %}
-      <tr{% if l.inativo %} class="inativo"{% endif %}>
+      <tr data-href="{{ l.url }}"{% if l.inativo %} class="inativo"{% endif %}>
         {% for c in l.celulas %}
         <td{% if c.num %} class="num"{% endif %}>
           {% if c.st %}<span class="st st-{{ c.st }}" aria-hidden="true"></span>{% endif %}
-          {% if forloop.first %}<a class="cad-abrir" href="{{ l.url }}">{{ c.t }}</a>{% else %}<span class="{% if c.forte %}forte{% endif %}{% if c.mono %} mono{% endif %}">{{ c.t }}</span>{% endif %}
+          {% if forloop.counter <= 2 %}<a class="cad-abrir{% if not forloop.first %} cad-abrir-nome{% endif %}" href="{{ l.url }}">{{ c.t }}</a>{% else %}<span class="{% if c.forte %}forte{% endif %}{% if c.mono %} mono{% endif %}">{{ c.t }}</span>{% endif %}
           {% if c.tag %}<span class="etiqueta">{{ c.tag }}</span>{% endif %}
           {% if c.sub %}<span class="cad-sub">{{ c.sub }}</span>{% endif %}
         </td>

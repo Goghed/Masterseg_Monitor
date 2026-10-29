@@ -663,3 +663,6 @@ body[data-page="cadastros"] { color-scheme: dark; }
   .cad-grupo .cad-tabela th:nth-child(4), .cad-grupo .cad-tabela td:nth-child(4) { display: none; }
   .cad-equip-acoes, .cad-equip-acoes .cad-busca { width: 100%; min-width: 0; }
 }
+.cad-tabela tr[data-href] { cursor: pointer; }
+.cad-tabela tr[data-href]:hover td { background: var(--painel-2); }
+.cad-abrir.cad-abrir-nome { font-stretch: 100%; font-weight: 500; }
