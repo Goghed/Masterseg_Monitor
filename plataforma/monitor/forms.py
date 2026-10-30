@@ -48,6 +48,7 @@ class AgenteForm(forms.ModelForm):
 CATEGORIAS_LOTE = {
     Equipamento.Categoria.CAMERA, Equipamento.Categoria.GRAVADOR, Equipamento.Categoria.SERVIDOR,
     Equipamento.Categoria.ALARME, Equipamento.Categoria.ACESSO, Equipamento.Categoria.FACIAL,
+    Equipamento.Categoria.AUDIO,
 }
 
 

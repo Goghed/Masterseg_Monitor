@@ -25,7 +25,9 @@ SECOES = [
     ("gravador", "Gravadores", ["gravador"]),
     ("switch", "Switches", ["switch"]),
     ("camera", "Câmeras", ["camera"]),
-    ("seguranca", "Alarme e acesso", ["alarme", "acesso", "facial", "interfone"]),
+    ("seguranca", "Alarme e acesso", ["alarme", "acesso", "facial"]),
+    ("comunicacao", "Comunicação", ["pabx", "interfone", "audio"]),
+    ("automacao", "Automação", ["automacao"]),
     ("outro", "Outros equipamentos", ["outro"]),
 ]
 

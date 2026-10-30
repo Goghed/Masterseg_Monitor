@@ -115,6 +115,9 @@ class Equipamento(models.Model):
         ACESSO = "acesso", "Controladora de acesso"
         FACIAL = "facial", "Leitor facial"
         INTERFONE = "interfone", "Interfone / porteiro"
+        PABX = "pabx", "Central telefônica (PABX)"
+        AUDIO = "audio", "Corneta / caixa de som IP"
+        AUTOMACAO = "automacao", "Módulo de automação (I/O)"
         OUTRO = "outro", "Outro"
 
     class Fabricante(models.TextChoices):

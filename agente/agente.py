@@ -30,7 +30,7 @@ from drivers import DRIVERS, escolher_driver  # noqa: E402
 from drivers.base import ErroDriver, SenhaRecusada  # noqa: E402
 from verificacoes import alcancavel  # noqa: E402
 
-VERSAO = "1.0.8"
+VERSAO = "1.0.9"
 log = logging.getLogger("agente")
 
 
@@ -151,8 +151,10 @@ class Agente:
             except ErroDriver as exc:
                 log.warning("%s (%s): leitura rápida falhou: %s", eq["nome"], eq["ip"], exc)
                 resultado["detalhes"] = {"erro_coleta": str(exc)}
-                if driver.nome == "mikrotik":
-                    resultado["servico_ok"] = False  # responde na rede, mas a API não
+                if driver.nome in ("mikrotik", "pabx_sip"):
+                    resultado["servico_ok"] = False  # responde na rede, mas a API (ou o SIP) não
+                if driver.nome == "pabx_sip":
+                    resultado["detalhes"]["sip"] = None  # não deixa o card mostrar o "respondendo" antigo
             except Exception:  # noqa: BLE001
                 log.exception("%s: erro inesperado na leitura rápida", eq["nome"])
 

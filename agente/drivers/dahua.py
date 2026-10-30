@@ -8,6 +8,10 @@ Endpoints usados (autenticação Digest, respostas `chave=valor`):
   /cgi-bin/storageDevice.cgi?action=getDeviceAllInfo                            (HD)
   /cgi-bin/configManager.cgi?action=getConfig&name=Network                      (MAC)
   /cgi-bin/magicBox.cgi?action=reboot
+Leitores faciais / controle de acesso Intelbras (SS 3530, SS 3540, SS 5530...):
+  /cgi-bin/accessControl.cgi?action=getDoorStatus&channel=1                     porta (a cada ciclo)
+  /cgi-bin/recordFinder.cgi?action=getQuerySize&name=AccessUserInfo             usuários
+  /cgi-bin/recordFinder.cgi?action=getQuerySize&name=AccessControlCard          cartões
 O formato varia entre firmwares; tudo é lido de forma tolerante. Valide com
 `python agente.py --testar IP --driver dahua_cgi` num equipamento real.
 """
@@ -31,6 +35,9 @@ class DahuaCGI(Driver):
         "MHDX": {"canais": True, "hdd": True},
         "XVR": {"canais": True, "hdd": True},
         "DHI-": {"canais": True, "hdd": True},
+        # Leitores faciais e controladoras Intelbras/Dahua.
+        "SS": {"canais": False, "hdd": False},
+        "ASI": {"canais": False, "hdd": False},
     }
 
     @classmethod
@@ -43,6 +50,33 @@ class DahuaCGI(Driver):
 
     def _cgi(self, caminho):
         return chave_valor(self.get(caminho).text)
+
+    # ------------------------------------------------------------ leitor facial / acesso
+    def coleta_rapida(self):
+        if self.eq.get("categoria") not in ("facial", "acesso"):
+            return None
+        portas = []
+        for canal in (1, 2):
+            try:
+                st = self._cgi(f"/cgi-bin/accessControl.cgi?action=getDoorStatus&channel={canal}")
+            except ErroDriver:
+                break
+            valor = (st.get("Info.status") or st.get("status") or "").lower()
+            if not valor:
+                break
+            portas.append({"id": str(canal), "estado": {"close": "fechada", "open": "aberta"}.get(valor, valor)})
+        return {"detalhes": {"acesso": {"portas": portas}}} if portas else None
+
+    def _acesso_cadastros(self):
+        res = {}
+        for nome, chave in (("AccessUserInfo", "usuarios"), ("AccessControlCard", "cartoes")):
+            try:
+                n = self._cgi(f"/cgi-bin/recordFinder.cgi?action=getQuerySize&name={nome}").get("count")
+            except ErroDriver:
+                continue
+            if n and n.isdigit():
+                res[chave] = int(n)
+        return res
 
     def coletar(self):
         tipo = self._cgi("/cgi-bin/magicBox.cgi?action=getDeviceType").get("type", "")
@@ -75,6 +109,10 @@ class DahuaCGI(Driver):
             hdds = self._hdds()
             if hdds:
                 det["hdds"] = hdds
+        if self.eq.get("categoria") in ("facial", "acesso"):
+            cadastros = self._acesso_cadastros()
+            if cadastros:
+                det["acesso_cadastros"] = cadastros
         return res
 
     def _canais(self):

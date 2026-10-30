@@ -278,3 +278,29 @@ class RelatorioTest(TestCase):
         item = self.client.get(f"/api/cliente/{cli.chave}/").json()["secoes"][0]["itens"][0]
         self.assertEqual(len(item["detalhes"]["canais"]), 4)
         self.assertEqual(item["detalhes"]["alarme"]["particoes"][0]["estado"], "desarmada")
+
+    def test_leitor_facial_e_pabx(self):
+        from .models import Evento
+        from .servicos import processar_relatorio
+        cli = Cliente.objects.create(nome="Prédio", chave="7000")
+        ag = Agente.objects.create(cliente=cli)
+        facial = Equipamento.objects.create(cliente=cli, nome="Facial Hall", categoria="facial", ip="10.0.2.10")
+        pabx = Equipamento.objects.create(cliente=cli, nome="CIP 850", categoria="pabx", ip="10.0.2.2")
+
+        def relatorio(violado):
+            processar_relatorio(ag, {"resultados": [
+                {"id": facial.pk, "online": True, "latencia_ms": 2.0, "perda_pct": 0,
+                 "detalhes": {"acesso": {"portas": [{"id": "1", "estado": "fechada"}], "violado": violado}}},
+                {"id": pabx.pk, "online": True, "latencia_ms": 1.0, "perda_pct": 0,
+                 "detalhes": {"sip": {"responde": True, "porta": 5060, "latencia_ms": 3.0, "servidor": "CIP"}}},
+            ]})
+
+        relatorio(False)
+        relatorio(True)
+        relatorio(True)
+        self.assertEqual(Evento.objects.filter(equipamento=facial, referencia="violacao").count(), 1)
+        staff = User.objects.create_user("s", password="x", is_staff=True)
+        self.client.force_login(staff)
+        secoes = {s["chave"]: [i["nome"] for i in s["itens"]]
+                  for s in self.client.get(f"/api/cliente/{cli.chave}/").json()["secoes"]}
+        self.assertEqual(secoes, {"seguranca": ["Facial Hall"], "comunicacao": ["CIP 850"]})

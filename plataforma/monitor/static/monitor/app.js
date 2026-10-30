@@ -419,6 +419,23 @@
     if (det.poe_watts != null) pares.push(["Consumo PoE", `${det.poe_watts} W`]);
     if (det.zonas) pares.push(["Zonas", det.zonas]);
     if (det.armado != null) pares.push(["Situação", det.armado ? "Armada" : "Desarmada"]);
+    if (det.sip) pares.push(["Telefonia (SIP)", `Respondendo na porta ${det.sip.porta}, ${fmtMs(det.sip.latencia_ms)}`]);
+    if (det.sip && det.sip.servidor) pares.push(["Software", det.sip.servidor]);
+    if (det.acesso) {
+      (det.acesso.portas || []).forEach((p) => {
+        const partes = [p.estado, p.fechadura && `fechadura ${p.fechadura}`, p.modo && p.modo !== "normal" && `modo ${p.modo}`];
+        const rotulo = (det.acesso.portas.length > 1 ? `Porta ${p.id}` : "Porta");
+        pares.push([rotulo, partes.filter(Boolean).join(", ")]);
+      });
+      if (det.acesso.leitores_online != null) pares.push(["Leitores online", det.acesso.leitores_online]);
+      if (det.acesso.violado) pares.push(["Violação", "APARELHO VIOLADO"]);
+    }
+    const cad = det.acesso_cadastros;
+    if (cad) {
+      const itens = [cad.usuarios != null && `${cad.usuarios} usuários`, cad.faces != null && `${cad.faces} faces`,
+        cad.cartoes != null && `${cad.cartoes} cartões`].filter(Boolean);
+      if (itens.length) pares.push(["Cadastrados", itens.join(", ")]);
+    }
     if (det.sip_registrado != null) pares.push(["SIP", det.sip_registrado ? `Registrado${det.ramal ? `, ramal ${det.ramal}` : ""}` : "Não registrado"]);
 
     if (det.canais && det.canais.length) {

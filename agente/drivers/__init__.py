@@ -3,8 +3,9 @@ from .dahua import DahuaCGI
 from .generico import Generico
 from .hikvision import HikvisionISAPI
 from .mikrotik import MikroTik
+from .sip import PabxSIP
 
-DRIVERS = {d.nome: d for d in (HikvisionISAPI, DahuaCGI, MikroTik, Generico)}
+DRIVERS = {d.nome: d for d in (HikvisionISAPI, DahuaCGI, MikroTik, PabxSIP, Generico)}
 
 # Ordem da detecção automática por fabricante cadastrado.
 ORDEM_DETECCAO = {
@@ -12,7 +13,7 @@ ORDEM_DETECCAO = {
     "dahua": [DahuaCGI, HikvisionISAPI],
     "intelbras": [DahuaCGI, HikvisionISAPI],
 }
-CATEGORIAS_SEM_API = {"gateway", "servidor", "outro"}
+CATEGORIAS_SEM_API = {"gateway", "servidor", "outro", "automacao"}
 
 
 def escolher_driver(equip):
@@ -22,6 +23,8 @@ def escolher_driver(equip):
         return DRIVERS[nome]
     if MikroTik.reconhece(equip):
         return MikroTik  # MikroTik com usuário cadastrado: sempre pela API dele
+    if equip.get("categoria") == "pabx":
+        return PabxSIP  # central telefônica: teste SIP, não precisa de usuário
     if equip.get("categoria") in CATEGORIAS_SEM_API or not equip.get("usuario"):
         return Generico
     for classe in ORDEM_DETECCAO.get(equip.get("fabricante"), [HikvisionISAPI, DahuaCGI]):

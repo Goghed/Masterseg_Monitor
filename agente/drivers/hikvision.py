@@ -7,6 +7,12 @@ Endpoints usados (autenticação Digest, respostas XML):
   GET /ISAPI/ContentMgmt/InputProxy/channels/status     canal online/offline (NVR)
   GET /ISAPI/ContentMgmt/Storage/hdd                    HDs
   PUT /ISAPI/System/reboot                              reinício remoto
+Leitores faciais / controle de acesso (DS-K1T...):
+  GET /ISAPI/AccessControl/AcsWorkStatus                porta, fechadura, leitores, violação (a cada ciclo)
+  GET /ISAPI/AccessControl/UserInfo/Count               usuários cadastrados
+  GET /ISAPI/AccessControl/CardInfo/Count               cartões cadastrados
+  GET /ISAPI/Intelligent/FDLib/Count                    faces cadastradas
+Cornetas / caixas de som IP (DS-QA..., DS-PA...): identificação pela deviceInfo.
 Centrais de alarme (AX PRO, AX Hybrid PRO), a cada ciclo:
   GET /ISAPI/SecurityCP/status/subSystems               partições armadas/desarmadas, disparo
   GET /ISAPI/SecurityCP/status/zones                    estado de cada zona
@@ -26,6 +32,13 @@ ARMACAO = {"disarm": "desarmada", "away": "armada", "stay": "armada_parcial", "v
 ZONA_FORA = {"offline", "breakdown", "heartbeatabnormal", "fault"}
 NOMES_ZONAS = {}  # ip -> (lido_em, {id: nome}); os nomes quase nunca mudam
 NOMES_VALIDADE_S = 600
+
+
+# AcsWorkStatus (ISAPI): códigos de cada array, uma posição por porta.
+SENSOR_PORTA = {0: "fechada", 1: "aberta", 2: "alarme (curto)", 3: "alarme (fio rompido)", 4: "alarme"}
+FECHADURA = {0: "travada", 1: "liberada", 2: "alarme (curto)", 3: "alarme (fio rompido)", 4: "alarme"}
+MODO_PORTA = {1: "dormindo", 2: "sempre aberta", 3: "sempre fechada", 4: "normal"}
+CATEGORIAS_ACESSO = {"facial", "acesso"}
 
 
 def _sim(valor):
@@ -61,6 +74,12 @@ class HikvisionISAPI(Driver):
         "DS-77": {"canais": True, "hdd": True},
         "DS-96": {"canais": True, "hdd": True},
         "iDS-": {"canais": True, "hdd": True},
+        # Leitores faciais e controladoras de acesso.
+        "DS-K1": {"canais": False, "hdd": False},
+        "DS-K2": {"canais": False, "hdd": False},
+        # Cornetas e caixas de som IP.
+        "DS-QA": {"canais": False, "hdd": False},
+        "DS-PA": {"canais": False, "hdd": False},
         # Centrais de alarme: não têm HD.
         "DS-PHA": {"hdd": False},
         "DS-PWA": {"canais": False, "hdd": False},
@@ -113,14 +132,62 @@ class HikvisionISAPI(Driver):
             hdds = self._hdds()
             if hdds:
                 det["hdds"] = hdds
+        if self.eq.get("categoria") in CATEGORIAS_ACESSO:
+            cadastros = self._acesso_cadastros()
+            if cadastros:
+                det["acesso_cadastros"] = cadastros
         return res
 
     # ------------------------------------------------------------ central de alarme
     def coleta_rapida(self):
-        if self.eq.get("categoria") != "alarme":
+        categoria = self.eq.get("categoria")
+        if categoria == "alarme":
+            alarme = self._alarme()
+            return {"detalhes": {"alarme": alarme}} if alarme else None
+        if categoria in CATEGORIAS_ACESSO:
+            acesso = self._acesso_status()
+            return {"detalhes": {"acesso": acesso}} if acesso else None
+        return None
+
+    # ------------------------------------------------------------ leitor facial / acesso
+    def _json(self, caminho):
+        try:
+            return json.loads(self.get(caminho + "?format=json").text)
+        except (ErroDriver, ValueError):
+            return {}
+
+    def _acesso_status(self):
+        st = self._json("/ISAPI/AccessControl/AcsWorkStatus").get("AcsWorkStatus")
+        if not isinstance(st, dict):
             return None
-        alarme = self._alarme()
-        return {"detalhes": {"alarme": alarme}} if alarme else None
+        sensores, travas, modos = (st.get(k) or [] for k in ("magneticStatus", "doorLockStatus", "doorStatus"))
+
+        def valor(lista, mapa, i):
+            return mapa.get(lista[i], str(lista[i])) if i < len(lista) else None
+
+        portas = [{"id": str(i + 1), "estado": valor(sensores, SENSOR_PORTA, i),
+                   "fechadura": valor(travas, FECHADURA, i), "modo": valor(modos, MODO_PORTA, i)}
+                  for i in range(max(len(sensores), len(travas), len(modos)))]
+        res = {"portas": portas}
+        if "cardReaderOnlineStatus" in st:
+            res["leitores_online"] = len(st.get("cardReaderOnlineStatus") or [])
+        if "hostAntiDismantleStatus" in st:
+            res["violado"] = str(st["hostAntiDismantleStatus"]).lower() == "open"
+        return res
+
+    def _acesso_cadastros(self):
+        res = {}
+        n = self._json("/ISAPI/AccessControl/UserInfo/Count").get("UserInfoCount", {}).get("userNumber")
+        if n is not None:
+            res["usuarios"] = n
+        n = self._json("/ISAPI/AccessControl/CardInfo/Count").get("CardInfoCount", {}).get("cardNumber")
+        if n is not None:
+            res["cartoes"] = n
+        faces = self._json("/ISAPI/Intelligent/FDLib/Count")
+        bibliotecas = faces.get("FDRecordDataInfo")
+        if isinstance(bibliotecas, list):
+            res["faces"] = sum(int(f.get("recordDataNumber") or 0) for f in bibliotecas if isinstance(f, dict))
+        return res
 
     def _lista_isapi(self, caminho, item):
         """Lista da ISAPI em JSON (AX PRO) ou XML (modelos que só falam XML)."""

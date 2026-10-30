@@ -1,7 +1,7 @@
 // Cadastro em lote: mostra a seção só para as categorias que aceitam lote
 // e exibe a faixa de nomes/IPs que será criada.
 // Mesma lista de CATEGORIAS_LOTE em forms.py.
-const CATEGORIAS_LOTE = ["camera", "gravador", "servidor", "alarme", "acesso", "facial"];
+const CATEGORIAS_LOTE = ["camera", "gravador", "servidor", "alarme", "acesso", "facial", "audio"];
 
 document.addEventListener("DOMContentLoaded", () => {
   const caixa = document.querySelector("fieldset.lote-cameras");

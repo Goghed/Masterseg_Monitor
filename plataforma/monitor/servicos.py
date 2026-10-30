@@ -193,6 +193,13 @@ def _comparar_detalhes(eq, antigos, novos, agora):
                 criado_em=agora,
             )
 
+    acesso, acesso_ant = novos.get("acesso"), antigos.get("acesso") or {}
+    if isinstance(acesso, dict) and acesso.get("violado") and not acesso_ant.get("violado"):
+        criar_evento(cliente=eq.cliente, equipamento=eq, tipo=Evento.Tipo.OUTRO,
+                     severidade=Evento.Severidade.CRITICO, referencia="violacao", criado_em=agora,
+                     titulo=f"{eq.nome} violado: aparelho aberto ou removido da parede",
+                     detalhe="O sensor antiviolação do leitor disparou.")
+
     if isinstance(novos.get("alarme"), dict):
         _comparar_alarme(eq, antigos.get("alarme") or {}, novos["alarme"], agora)
 
