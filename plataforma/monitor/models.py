@@ -125,6 +125,7 @@ class Equipamento(models.Model):
         DAHUA = "dahua", "Dahua"
         INTELBRAS = "intelbras", "Intelbras"
         MIKROTIK = "mikrotik", "MikroTik"
+        COMMBOX = "commbox", "Commbox"
         OUTRO = "outro", "Outro"
 
     class Driver(models.TextChoices):
@@ -132,6 +133,8 @@ class Equipamento(models.Model):
         HIKVISION = "hikvision_isapi", "Hikvision ISAPI"
         DAHUA = "dahua_cgi", "Dahua / Intelbras CGI"
         MIKROTIK = "mikrotik", "MikroTik (REST / API)"
+        PABX_SIP = "pabx_sip", "Central telefônica SIP (CIP 850 e outras)"
+        COMMBOX = "commbox_mio", "Commbox MIO (MIO-100 / 400 / 800)"
         GENERICO = "generico", "Genérico (ping e portas)"
 
     cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, related_name="equipamentos")

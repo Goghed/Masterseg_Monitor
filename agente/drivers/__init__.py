@@ -1,11 +1,12 @@
 """Registro de drivers e detecção automática."""
+from .commbox import CommboxMIO
 from .dahua import DahuaCGI
 from .generico import Generico
 from .hikvision import HikvisionISAPI
 from .mikrotik import MikroTik
 from .sip import PabxSIP
 
-DRIVERS = {d.nome: d for d in (HikvisionISAPI, DahuaCGI, MikroTik, PabxSIP, Generico)}
+DRIVERS = {d.nome: d for d in (HikvisionISAPI, DahuaCGI, MikroTik, PabxSIP, CommboxMIO, Generico)}
 
 # Ordem da detecção automática por fabricante cadastrado.
 ORDEM_DETECCAO = {
@@ -23,6 +24,8 @@ def escolher_driver(equip):
         return DRIVERS[nome]
     if MikroTik.reconhece(equip):
         return MikroTik  # MikroTik com usuário cadastrado: sempre pela API dele
+    if equip.get("fabricante") == "commbox":
+        return CommboxMIO
     if equip.get("categoria") == "pabx":
         return PabxSIP  # central telefônica: teste SIP, não precisa de usuário
     if equip.get("categoria") in CATEGORIAS_SEM_API or not equip.get("usuario"):

@@ -419,6 +419,7 @@
     if (det.poe_watts != null) pares.push(["Consumo PoE", `${det.poe_watts} W`]);
     if (det.zonas) pares.push(["Zonas", det.zonas]);
     if (det.armado != null) pares.push(["Situação", det.armado ? "Armada" : "Desarmada"]);
+    if (det.web) pares.push(["Página web", `Respondendo${det.titulo_web ? ` (${det.titulo_web})` : ""}`]);
     if (det.sip) pares.push(["Telefonia (SIP)", `Respondendo na porta ${det.sip.porta}, ${fmtMs(det.sip.latencia_ms)}`]);
     if (det.sip && det.sip.servidor) pares.push(["Software", det.sip.servidor]);
     if (det.acesso) {
